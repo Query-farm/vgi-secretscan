@@ -4,7 +4,9 @@
 
 <p align="center"><em>A <a href="https://query.farm">Query.Farm</a> VGI worker for DuckDB.</em></p>
 
-# vgi-secretscan
+# Detect Leaked Secrets & Keys in Text and Code in DuckDB
+
+> **vgi-secretscan** · a [Query.Farm](https://query.farm) VGI worker · powered by gitleaks
 
 [![CI](https://github.com/Query-farm/vgi-secretscan/actions/workflows/ci.yml/badge.svg)](https://github.com/Query-farm/vgi-secretscan/actions/workflows/ci.yml)
 
