@@ -1,3 +1,9 @@
+<p align="center">
+  <img src="docs/vgi-logo.png" alt="Vector Gateway Interface (VGI)" width="320">
+</p>
+
+<p align="center"><em>A <a href="https://query.farm">Query.Farm</a> VGI worker for DuckDB.</em></p>
+
 # vgi-secretscan
 
 [![CI](https://github.com/Query-farm/vgi-secretscan/actions/workflows/ci.yml/badge.svg)](https://github.com/Query-farm/vgi-secretscan/actions/workflows/ci.yml)
@@ -164,3 +170,12 @@ It builds the worker and runs the SQL suite against it (no mock server is needed
   whose licenses are recorded in `go.sum` / their respective repositories.
 - It is built on the [`vgi-go`](https://github.com/Query-farm/vgi-go) SDK (and
   its Apache Arrow dependency) for the VGI protocol — see that repo for its terms.
+
+---
+
+## Authorship & License
+
+Written by [Query.Farm](https://query.farm) — every VGI worker is designed and built by Query.Farm.
+
+Copyright 2026 Query Farm LLC - https://query.farm
+
