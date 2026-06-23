@@ -175,7 +175,7 @@ It builds the worker and runs the SQL suite against it (no mock server is needed
 
 ## Authorship & License
 
-Written by [Query.Farm](https://query.farm) — every VGI worker is designed and built by Query.Farm.
+Written by [Query.Farm](https://query.farm).
 
 Copyright 2026 Query Farm LLC - https://query.farm
 
