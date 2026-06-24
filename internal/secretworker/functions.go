@@ -22,8 +22,56 @@ var (
 // between NewState and Process (it may cross a process boundary over HTTP). The
 // state struct must hold only EXPORTED, gob-encodable fields — no arrow.Record,
 // interfaces, channels, funcs, or unexported fields. secretScanState therefore
-// stores plain exported Finding slices plus a Done flag, fetched eagerly in
-// NewState, and rebuilds the Arrow batch in Process.
+// stores plain exported Finding slices in an embedded Cursor, computed eagerly
+// in NewState, and rebuilds the Arrow batch in Process.
+//
+// WHY AN EXPLICIT CURSOR, NOT A bool Done (the HTTP-continuation fix):
+//
+// Over the stateless HTTP transport the worker keeps NO live state between
+// Process ticks — the framework round-trips the producer state through an opaque
+// continuation token: after each tick it gob-encodes the LIVE user state, the
+// client returns the token, and the worker resumes by gob-decoding it. The HTTP
+// server emits at most one data batch per response, so a producer with more to
+// emit is always resumed mid-stream from its token. A bare `Done bool` flipped
+// *after* the single Emit observes the pre-Emit snapshot on resume, re-emits the
+// same rows forever, and pins the worker in an infinite loop (subprocess/unix
+// hold live state in memory, so they never hit it). secret_scan emits one row
+// per finding (a blob can hold many), so this is mandatory. The fix: the state
+// embeds Cursor carrying the Findings plus the Offset of the next unemitted row;
+// Process emits a bounded slice from Offset, advances Offset BEFORE yielding, and
+// Finish()es once Offset >= len(Rows). The framework snapshots Offset into the
+// token, so HTTP resumes correctly and terminates.
+
+// rowsPerTick bounds how many rows each Process tick emits. Emitting a bounded
+// slice and advancing the cursor is what makes the offset observable across the
+// HTTP continuation boundary (and scales to many findings).
+const rowsPerTick = 256
+
+// Cursor is the streaming cursor embedded by the table-function state: the
+// eagerly computed findings plus the offset of the next unemitted row. Both
+// fields are exported so gob round-trips them through the HTTP continuation
+// token. The TYPE is exported (Cursor, not cursor) because the SDK counts a
+// state struct's exported FIELDS at registration to verify it is gob-encodable.
+type Cursor struct {
+	Rows   []Finding
+	Offset int
+}
+
+// nextSlice returns the next bounded slice of findings to emit and advances the
+// cursor past them. It reports done=true once all findings have been consumed,
+// at which point Process should call out.Finish().
+func (c *Cursor) nextSlice() (slice []Finding, done bool) {
+	if c.Offset >= len(c.Rows) {
+		return nil, true
+	}
+	end := c.Offset + rowsPerTick
+	if end > len(c.Rows) {
+		end = len(c.Rows)
+	}
+	slice = c.Rows[c.Offset:end]
+	c.Offset = end
+	return slice, false
+}
 
 // ===========================================================================
 // scalar: secret_contains(text VARCHAR) -> BOOLEAN
@@ -97,10 +145,9 @@ type secretScanArgs struct {
 }
 
 // secretScanState holds the eagerly-computed findings (gob-encodable: Finding
-// has only exported scalar fields) plus the emit flag.
+// has only exported scalar fields) in an embedded streaming cursor.
 type secretScanState struct {
-	Done     bool
-	Findings []Finding
+	Cursor
 }
 
 // SecretScanFunction emits one row per secret finding in the input text.
@@ -137,16 +184,14 @@ func (f *SecretScanFunction) NewState(params *vgi.ProcessParams) (*secretScanSta
 	if err != nil {
 		return nil, err
 	}
-	return &secretScanState{Findings: findings}, nil
+	return &secretScanState{Cursor{Rows: findings}}, nil
 }
 
 func (f *SecretScanFunction) Process(_ context.Context, _ *vgi.ProcessParams, state *secretScanState, out *vgirpc.OutputCollector) error {
-	if state.Done {
+	r, done := state.nextSlice()
+	if done {
 		return out.Finish()
 	}
-	state.Done = true
-
-	r := state.Findings
 	n := int64(len(r))
 	batch := array.NewRecordBatch(secretScanSchema, []arrow.Array{
 		vgi.BuildStringArray(n, func(i int64) string { return r[i].RuleID }),
