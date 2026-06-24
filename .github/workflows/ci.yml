@@ -105,3 +105,27 @@ jobs:
         run: ci/run-integration.sh
         env:
           TRANSPORT: ${{ matrix.transport }}
+
+  # Metadata quality: build the worker binary, then run vgi-lint against it so
+  # the catalog/schema/function metadata (descriptions, examples, tags) stays
+  # high-quality. Kept as a separate, visible job. The action force-installs the
+  # signed vgi community extension itself.
+  metadata-quality:
+    name: Metadata quality (vgi-lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Build the worker
+        run: go build -o vgi-secretscan-worker ./cmd/vgi-secretscan-worker
+
+      - name: vgi-lint
+        uses: Query-farm/vgi-lint-check@v1
+        with:
+          location: "${{ github.workspace }}/vgi-secretscan-worker"
+          fail-on: info

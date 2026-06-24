@@ -90,6 +90,16 @@ func (f *SecretContainsFunction) Metadata() vgi.FunctionMetadata {
 		Stability:   vgi.StabilityConsistent,
 		ReturnType:  arrow.FixedWidthTypes.Boolean,
 		Categories:  []string{"secretscan", "security", "secrets"},
+		Examples: []vgi.CatalogExample{
+			{
+				SQL:         "SELECT secretscan.main.secret_contains('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') AS leaked;",
+				Description: "Check whether a single string holds any detectable secret (returns TRUE here for the AWS-style key).",
+			},
+			{
+				SQL:         "SELECT path FROM source_files WHERE secretscan.main.secret_contains(contents);",
+				Description: "Filter a table of files down to those whose contents contain at least one leaked secret.",
+			},
+		},
 	}
 }
 
@@ -160,6 +170,26 @@ func (f *SecretScanFunction) Metadata() vgi.FunctionMetadata {
 		Description: "Scan text/code for leaked secrets; emit one row per finding (rule_id, description, match_redacted, start_offset, entropy, confidence). Redacted output only; no verification.",
 		Stability:   vgi.StabilityConsistent,
 		Categories:  []string{"secretscan", "security", "secrets"},
+		Tags: map[string]string{
+			"vgi.columns_md": "| Column | Type | Description |\n" +
+				"| --- | --- | --- |\n" +
+				"| `rule_id` | VARCHAR | Identifier of the gitleaks rule that matched (e.g. `aws-access-token`, `private-key`, `generic-api-key`). |\n" +
+				"| `description` | VARCHAR | Human-readable description of the matched rule. |\n" +
+				"| `match_redacted` | VARCHAR | The matched text with the secret substring masked — the raw credential is never returned. |\n" +
+				"| `start_offset` | INTEGER | Zero-based byte offset of the match within the input text. |\n" +
+				"| `entropy` | DOUBLE | Shannon entropy of the detected secret (gitleaks value, or a computed fallback when the rule has no entropy threshold). |\n" +
+				"| `confidence` | DOUBLE | Heuristic confidence score in [0,1]: structurally distinctive rules (AWS/GCP/GitHub/private-key/JWT) score high; generic/entropy rules scale with entropy. |",
+		},
+		Examples: []vgi.CatalogExample{
+			{
+				SQL:         "SELECT rule_id, match_redacted, confidence FROM secretscan.main.secret_scan('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T');",
+				Description: "List each secret found in a string, with its rule, redacted match, and confidence.",
+			},
+			{
+				SQL:         "SELECT f.path, s.rule_id, s.start_offset FROM source_files f, secretscan.main.secret_scan(f.contents) s WHERE s.confidence >= 0.9;",
+				Description: "Join a files table with secret_scan to report high-confidence leaks per file, including their byte offset.",
+			},
+		},
 	}
 }
 
