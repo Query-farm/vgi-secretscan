@@ -3,7 +3,9 @@
 package secretworker
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"testing"
 
 	"github.com/Query-farm/vgi-go/vgi"
@@ -24,6 +26,47 @@ func TestRegisterDoesNotPanic(t *testing.T) {
 	}()
 	w := vgi.NewWorker(vgi.WithCatalogName(CatalogName))
 	Register(w)
+}
+
+// TestCursorSurvivesContinuation proves the streaming cursor round-trips through
+// a gob snapshot between Process ticks — the exact path the stateless HTTP
+// transport takes when it resumes a producer from its continuation token. A
+// multi-row producer that advances Offset BEFORE yielding emits each finding
+// exactly once and terminates (the bug a bare Done flag re-emitted forever over
+// HTTP).
+func TestCursorSurvivesContinuation(t *testing.T) {
+	const total = 1000 // > rowsPerTick (256), so it spans several continuations
+	rows := make([]Finding, total)
+	for i := range rows {
+		rows[i] = Finding{RuleID: "aws-access-token", StartOffset: int32(i)}
+	}
+	st := &secretScanState{Cursor{Rows: rows}}
+
+	emitted := 0
+	for tick := 0; tick < total+5; tick++ {
+		slice, done := st.nextSlice()
+		if done {
+			break
+		}
+		emitted += len(slice)
+		// Simulate the HTTP continuation boundary: gob-encode then decode the
+		// LIVE state, and resume from the snapshot (never the in-memory state).
+		var buf bytes.Buffer
+		if err := gob.NewEncoder(&buf).Encode(st); err != nil {
+			t.Fatalf("gob encode: %v", err)
+		}
+		var resumed secretScanState
+		if err := gob.NewDecoder(&buf).Decode(&resumed); err != nil {
+			t.Fatalf("gob decode: %v", err)
+		}
+		st = &resumed
+	}
+	if emitted != total {
+		t.Fatalf("cursor emitted %d rows across continuations, want %d", emitted, total)
+	}
+	if _, done := st.nextSlice(); !done {
+		t.Fatal("cursor did not report done after draining all rows")
+	}
 }
 
 // buildStringBatch wraps a single VARCHAR value as a 1-row Arrow batch suitable

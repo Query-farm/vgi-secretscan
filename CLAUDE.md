@@ -79,10 +79,24 @@ Table-function state is **gob-encoded** by the SDK between `NewState` and
 `Process` (it may cross an HTTP process boundary). State must hold only
 **exported, gob-encodable** fields — no `arrow.Record`, interface, channel,
 func, or unexported field, or vgi-go **panics at `RegisterTable`**.
-`secretScanState` is `{ Done bool; Findings []Finding }` — `Finding` is all
-exported scalar fields, so it gobs cleanly. We compute the findings eagerly in
-`NewState` and rebuild the Arrow batch in `Process` (mirrors vgi-threatintel's
-`reputationState`). `TestRegisterDoesNotPanic` guards this.
+`secretScanState` embeds `Cursor{ Rows []Finding; Offset int }` — `Finding` is
+all exported scalar fields, so it gobs cleanly. We compute the findings eagerly
+in `NewState` and rebuild the Arrow batch in `Process`. `TestRegisterDoesNotPanic`
+guards this.
+
+**Streaming state MUST carry an explicit cursor, not a bare `Done bool`** (the
+HTTP-continuation invariant). Over the **stateless HTTP transport** the worker
+keeps no live state between `Process` ticks — the framework round-trips the
+producer state through a continuation token (gob-snapshotting the user state each
+tick, emitting ≤1 data batch per response, resuming from the token). A `Done`
+flag flipped *after* the single `Emit` observes the pre-`Emit` snapshot on
+resume, re-emits the same rows forever, and pins the worker in an infinite loop
+(subprocess/unix hold live state in memory, so they never hit it). `secret_scan`
+emits one row per finding (a blob can hold many), so this is mandatory. The fix:
+the embedded `Cursor` whose `Process` emits a bounded slice from `Offset`,
+advances `Offset` **before** yielding, and `out.Finish()`es when `Offset >=
+len(Rows)`. The framework snapshots `Offset` into the token, so HTTP resumes
+correctly and terminates. `TestCursorSurvivesContinuation` guards this.
 
 ## Sharp edges
 
