@@ -91,11 +91,10 @@ func (f *SecretContainsFunction) Metadata() vgi.FunctionMetadata {
 		ReturnType:  arrow.FixedWidthTypes.Boolean,
 		Categories:  []string{"secretscan", "security", "secrets"},
 		Tags: map[string]string{
-			"vgi.title":      "Secret Present Predicate",
-			"vgi.doc_llm":    "Return a BOOLEAN reporting whether a text or source-code value contains at least one detectable leaked secret (cloud keys, API tokens, private keys, JWTs, high-entropy strings) using the embedded gitleaks ruleset plus Shannon-entropy heuristics. It is the cheap predicate for WHERE-clause filtering; pass the same text to secret_scan to enumerate the individual findings. Detection is offline (no network), never verifies whether the secret is live, and returns NULL for a NULL input.",
-			"vgi.doc_md":     "Return `TRUE` when `text` holds at least one detectable leaked secret (gitleaks ruleset + entropy), else `FALSE` (`NULL` for `NULL` input). The cheap predicate for filtering; use `secret_scan` for the findings. Offline, no verification.",
-			"vgi.keywords":   "secret, leaked secret, credential, contains secret, secret detection, gitleaks, api key, token, private key, jwt, entropy, predicate, boolean, filter",
-			"vgi.source_url": sourceURL("internal/secretworker/functions.go"),
+			"vgi.title":    "Secret Present Predicate",
+			"vgi.doc_llm":  "Return a BOOLEAN reporting whether a text or source-code value contains at least one detectable leaked secret (cloud keys, API tokens, private keys, JWTs, high-entropy strings) using the embedded gitleaks ruleset plus Shannon-entropy heuristics. It is the cheap predicate for WHERE-clause filtering; pass the same text to secret_scan to enumerate the individual findings. Detection is offline (no network), never verifies whether the secret is live, and returns NULL for a NULL input.",
+			"vgi.doc_md":   "Return `TRUE` when `text` holds at least one detectable leaked secret (gitleaks ruleset + entropy), else `FALSE` (`NULL` for `NULL` input). The cheap predicate for filtering; use `secret_scan` for the findings. Offline, no verification.",
+			"vgi.keywords": `["secret","leaked secret","credential","contains secret","secret detection","gitleaks","api key","token","private key","jwt","entropy","predicate","boolean","filter"]`,
 			"vgi.executable_examples": `[` +
 				`{"description":"Detect an AWS-style secret access key in a string (TRUE).",` +
 				`"sql":"SELECT secretscan.main.secret_contains('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') AS leaked;"},` +
@@ -166,7 +165,7 @@ var secretScanSchema = arrow.NewSchema([]arrow.Field{
 }, nil)
 
 type secretScanArgs struct {
-	Text string `vgi:"pos=0,doc=Text or source code to scan (VARCHAR constant)"`
+	Text string `vgi:"pos=0,doc=The text or source code to scan for leaked secrets; passed as a constant literal"`
 }
 
 // secretScanState holds the eagerly-computed findings (gob-encodable: Finding
@@ -186,11 +185,10 @@ func (f *SecretScanFunction) Metadata() vgi.FunctionMetadata {
 		Stability:   vgi.StabilityConsistent,
 		Categories:  []string{"secretscan", "security", "secrets"},
 		Tags: map[string]string{
-			"vgi.title":      "Secret Scan Findings",
-			"vgi.doc_llm":    "Scan a text or source-code value for leaked secrets and emit one row per finding using the embedded gitleaks ruleset plus Shannon-entropy heuristics. Each row reports the matched rule_id, a human description, the redacted match (the raw credential is never returned), the zero-based byte start_offset, the secret's Shannon entropy, and a heuristic confidence score in [0,1]. A single input can yield many rows. Detection is offline (no network) and never verifies whether the secret is live; a NULL or empty input yields zero rows. Use secret_contains for a cheap boolean predicate first.",
-			"vgi.doc_md":     "Scan `text` for leaked secrets and return one row per finding: `rule_id`, `description`, `match_redacted` (raw credential never returned), `start_offset` (byte), `entropy`, `confidence` in `[0,1]`. Offline, no verification; `NULL`/empty input yields zero rows.",
-			"vgi.keywords":   "secret scan, secret detection, findings, leaked secret, credential, gitleaks, api key, token, private key, jwt, entropy, redacted, confidence, rule, offset, table function",
-			"vgi.source_url": sourceURL("internal/secretworker/functions.go"),
+			"vgi.title":    "Secret Scan Findings",
+			"vgi.doc_llm":  "Scan a text or source-code value for leaked secrets and emit one row per finding using the embedded gitleaks ruleset plus Shannon-entropy heuristics. Each row reports the matched rule_id, a human description, the redacted match (the raw credential is never returned), the zero-based byte start_offset, the secret's Shannon entropy, and a heuristic confidence score in [0,1]. A single input can yield many rows. Detection is offline (no network) and never verifies whether the secret is live; a NULL or empty input yields zero rows. Use secret_contains for a cheap boolean predicate first.",
+			"vgi.doc_md":   "Scan `text` for leaked secrets and return one row per finding: `rule_id`, `description`, `match_redacted` (raw credential never returned), `start_offset` (byte), `entropy`, `confidence` in `[0,1]`. Offline, no verification; `NULL`/empty input yields zero rows.",
+			"vgi.keywords": `["secret scan","secret detection","findings","leaked secret","credential","gitleaks","api key","token","private key","jwt","entropy","redacted","confidence","rule","offset","table function"]`,
 			"vgi.result_columns_md": "| Column | Type | Description |\n" +
 				"| --- | --- | --- |\n" +
 				"| `rule_id` | VARCHAR | Identifier of the gitleaks rule that matched (e.g. `aws-access-token`, `private-key`, `generic-api-key`). |\n" +
@@ -263,14 +261,6 @@ func NewSecretScanFunction() vgi.TableFunction {
 // ===========================================================================
 // helpers + registration
 // ===========================================================================
-
-// sourceBase is the GitHub blob base for this repo's source files (pinned to
-// main); sourceURL builds a per-object vgi.source_url implementation link.
-const sourceBase = "https://github.com/Query-farm/vgi-secretscan/blob/main"
-
-// sourceURL builds the implementation link for a file relative to the repo root,
-// e.g. sourceURL("internal/secretworker/functions.go").
-func sourceURL(relativePath string) string { return sourceBase + "/" + relativePath }
 
 // isNullArg reports whether positional argument pos is present and NULL.
 func isNullArg(args *vgi.Arguments, pos int) bool {

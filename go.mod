@@ -3,7 +3,7 @@ module github.com/Query-farm/vgi-secretscan
 go 1.25.0
 
 require (
-	github.com/Query-farm/vgi-go v0.3.0
+	github.com/Query-farm/vgi-go v0.4.0
 	github.com/Query-farm/vgi-rpc-go v0.9.4
 	github.com/apache/arrow-go/v18 v18.5.2
 	github.com/zricethezav/gitleaks/v8 v8.30.1
