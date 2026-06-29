@@ -27,10 +27,10 @@ github.com/Masterminds/semver/v3 v3.3.0 h1:B8LGeaivUe71a5qox1ICM/JLl0NqZSW5CHyL+
 github.com/Masterminds/semver/v3 v3.3.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Masterminds/sprig/v3 v3.3.0 h1:mQh0Yrg1XPo6vjYXgtf5OtijNAKJRNcTdOOGZe3tPhs=
 github.com/Masterminds/sprig/v3 v3.3.0/go.mod h1:Zy1iXRYNqNLUolqCpL4uhk6SHUMAOSCzdgBfDb35Lz0=
-github.com/Query-farm/vgi-go v0.4.0 h1:NyHFxAhbQlFNdse3l34K3+2/ByOCGlrCmyJiCrKUZew=
-github.com/Query-farm/vgi-go v0.4.0/go.mod h1:LuHl5mhOtDaGj/j5sE0kacXG7cVrcr7E2iCgR3TBVTk=
-github.com/Query-farm/vgi-rpc-go v0.9.4 h1:Da+0bNrQkTH2rHXfDZ3i52UldUov4xJx+fWe26n/1Lk=
-github.com/Query-farm/vgi-rpc-go v0.9.4/go.mod h1:XbQBjp31eFKIZaBqmg0q9r2Mxp/LTPeAG97w1qy5gmI=
+github.com/Query-farm/vgi-go v0.7.0 h1:AFc0NHvNU2ppd4e5zyMpLir+x+dphH56+slyWh+tP/o=
+github.com/Query-farm/vgi-go v0.7.0/go.mod h1:amfpB2B25yMrfF+RDv++NY+aPsSJV64CJGe1tnc5Xg4=
+github.com/Query-farm/vgi-rpc-go v0.10.0 h1:ddteS2eF/F8Y7ZeyOfRpwjYosVv3MTTyad9U57RuaTs=
+github.com/Query-farm/vgi-rpc-go v0.10.0/go.mod h1:XbQBjp31eFKIZaBqmg0q9r2Mxp/LTPeAG97w1qy5gmI=
 github.com/STARRY-S/zip v0.2.1 h1:pWBd4tuSGm3wtpoqRZZ2EAwOmcHK6XFf7bU9qcJXyFg=
 github.com/STARRY-S/zip v0.2.1/go.mod h1:xNvshLODWtC4EJ702g7cTYn13G53o1+X9BWnPFpcWV4=
 github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=
