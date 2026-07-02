@@ -4,6 +4,7 @@ package secretworker
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/Query-farm/vgi-go/vgi"
 	"github.com/Query-farm/vgi-rpc-go/vgirpc"
@@ -91,7 +92,9 @@ func (f *SecretContainsFunction) Metadata() vgi.FunctionMetadata {
 		ReturnType:  arrow.FixedWidthTypes.Boolean,
 		Categories:  []string{"secretscan", "security", "secrets"},
 		Tags: map[string]string{
-			"vgi.title":    "Secret Present Predicate",
+			"vgi.title": "Secret Present Predicate",
+			// VGI413: name one of the schema's vgi.categories entries.
+			"vgi.category": "Detection",
 			"vgi.doc_llm":  "Return a BOOLEAN reporting whether a text or source-code value contains at least one detectable leaked secret (cloud keys, API tokens, private keys, JWTs, high-entropy strings) using the embedded gitleaks ruleset plus Shannon-entropy heuristics. It is the cheap predicate for WHERE-clause filtering; pass the same text to secret_scan to enumerate the individual findings. Detection is offline (no network), never verifies whether the secret is live, and returns NULL for a NULL input.",
 			"vgi.doc_md":   "Return `TRUE` when `text` holds at least one detectable leaked secret (gitleaks ruleset + entropy), else `FALSE` (`NULL` for `NULL` input). The cheap predicate for filtering; use `secret_scan` for the findings. Offline, no verification.",
 			"vgi.keywords": `["secret","leaked secret","credential","contains secret","secret detection","gitleaks","api key","token","private key","jwt","entropy","predicate","boolean","filter"]`,
@@ -185,7 +188,9 @@ func (f *SecretScanFunction) Metadata() vgi.FunctionMetadata {
 		Stability:   vgi.StabilityConsistent,
 		Categories:  []string{"secretscan", "security", "secrets"},
 		Tags: map[string]string{
-			"vgi.title":    "Secret Scan Findings",
+			"vgi.title": "Secret Scan Findings",
+			// VGI413: name one of the schema's vgi.categories entries.
+			"vgi.category": "Findings",
 			"vgi.doc_llm":  "Scan a text or source-code value for leaked secrets and emit one row per finding using the embedded gitleaks ruleset plus Shannon-entropy heuristics. Each row reports the matched rule_id, a human description, the redacted match (the raw credential is never returned), the zero-based byte start_offset, the secret's Shannon entropy, and a heuristic confidence score in [0,1]. A single input can yield many rows. Detection is offline (no network) and never verifies whether the secret is live; a NULL or empty input yields zero rows. Use secret_contains for a cheap boolean predicate first.",
 			"vgi.doc_md":   "Scan `text` for leaked secrets and return one row per finding: `rule_id`, `description`, `match_redacted` (raw credential never returned), `start_offset` (byte), `entropy`, `confidence` in `[0,1]`. Offline, no verification; `NULL`/empty input yields zero rows.",
 			"vgi.keywords": `["secret scan","secret detection","findings","leaked secret","credential","gitleaks","api key","token","private key","jwt","entropy","redacted","confidence","rule","offset","table function"]`,
@@ -272,6 +277,98 @@ func isNullArg(args *vgi.Arguments, pos int) bool {
 		return false
 	}
 	return col.Len() == 0 || col.IsNull(0)
+}
+
+// ===========================================================================
+// agent-suitability suite (VGI152 / VGI920)
+// ===========================================================================
+
+// Fixed, clearly-fake test fixtures reused by the agent task suite. They are
+// the same non-live values the SQL E2E asserts on, so every reference query is
+// deterministic and fully offline (no network).
+const (
+	sampleAWSText   = "deploy AKIAZ3MZ7EXAMPLE4Q2T now"
+	sampleSlackText = "token xoxb-1234567890-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx"
+	sampleCleanText = "the quick brown fox jumps over the lazy dog"
+)
+
+// AgentTestTasks is the VGI152/VGI920 analyst-task suite (catalog tag
+// vgi.agent_test_tasks). Each task is a natural-language prompt an agent should
+// be able to satisfy with this worker, paired with the reference SQL that
+// produces the ground-truth answer. Every task operates on an inline literal, so
+// `vgi-lint simulate` executes them deterministically with NO network access.
+var AgentTestTasks = buildAgentTestTasks()
+
+func buildAgentTestTasks() string {
+	type task struct {
+		Name              string `json:"name"`
+		Prompt            string `json:"prompt"`
+		ReferenceSQL      string `json:"reference_sql"`
+		SuccessCriteria   string `json:"success_criteria"`
+		IgnoreColumnNames bool   `json:"ignore_column_names,omitempty"`
+	}
+	tasks := []task{
+		{
+			Name: "contains_secret_true",
+			Prompt: "Does the following text contain any leaked secret? Answer with a single " +
+				"boolean. Text: " + sampleAWSText,
+			ReferenceSQL: "SELECT secretscan.main.secret_contains('" + sampleAWSText +
+				"') AS leaked",
+			SuccessCriteria:   "The answer is TRUE — the text contains a detectable secret.",
+			IgnoreColumnNames: true,
+		},
+		{
+			Name: "contains_secret_false",
+			Prompt: "Does the following benign sentence contain any leaked secret? Answer " +
+				"with a single boolean. Text: " + sampleCleanText,
+			ReferenceSQL: "SELECT secretscan.main.secret_contains('" + sampleCleanText +
+				"') AS leaked",
+			SuccessCriteria:   "The answer is FALSE — the sentence contains no detectable secret.",
+			IgnoreColumnNames: true,
+		},
+		{
+			Name: "count_findings",
+			Prompt: "Scan the following text for leaked secrets and tell me how many findings " +
+				"it produces. Text: " + sampleAWSText,
+			ReferenceSQL: "SELECT count(*) AS n FROM secretscan.main.secret_scan('" +
+				sampleAWSText + "')",
+			SuccessCriteria:   "The count of findings is 1.",
+			IgnoreColumnNames: true,
+		},
+		{
+			Name: "rule_and_redacted_match",
+			Prompt: "Scan the following text for leaked secrets and report, for each finding, " +
+				"the matched rule id and the redacted match. Text: " + sampleAWSText,
+			ReferenceSQL: "SELECT rule_id, match_redacted FROM secretscan.main.secret_scan('" +
+				sampleAWSText + "')",
+			SuccessCriteria: "Reports rule_id 'aws-access-token' and a redacted match that " +
+				"masks the raw key (e.g. AKIA********4Q2T), never the full credential.",
+			IgnoreColumnNames: true,
+		},
+		{
+			Name: "high_confidence_offset",
+			Prompt: "In the following text, at what byte offset does the high-confidence " +
+				"(confidence >= 0.9) leaked secret start? Text: " + sampleAWSText,
+			ReferenceSQL: "SELECT start_offset FROM secretscan.main.secret_scan('" +
+				sampleAWSText + "') WHERE confidence >= 0.9",
+			SuccessCriteria:   "The reported byte start offset is 7.",
+			IgnoreColumnNames: true,
+		},
+		{
+			Name: "slack_token_rule",
+			Prompt: "Scan the following text for leaked secrets and report the rule id that " +
+				"matched. Text: " + sampleSlackText,
+			ReferenceSQL: "SELECT rule_id FROM secretscan.main.secret_scan('" +
+				sampleSlackText + "')",
+			SuccessCriteria:   "Reports rule_id 'slack-bot-token'.",
+			IgnoreColumnNames: true,
+		},
+	}
+	b, err := json.Marshal(tasks)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }
 
 // Register registers the secret-scan scalar + table functions on the worker.
