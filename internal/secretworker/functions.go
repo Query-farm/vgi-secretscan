@@ -194,14 +194,16 @@ func (f *SecretScanFunction) Metadata() vgi.FunctionMetadata {
 			"vgi.doc_llm":  "Scan a text or source-code value for leaked secrets and emit one row per finding using the embedded gitleaks ruleset plus Shannon-entropy heuristics. Each row reports the matched rule_id, a human description, the redacted match (the raw credential is never returned), the zero-based byte start_offset, the secret's Shannon entropy, and a heuristic confidence score in [0,1]. A single input can yield many rows. Detection is offline (no network) and never verifies whether the secret is live; a NULL or empty input yields zero rows. Use secret_contains for a cheap boolean predicate first.",
 			"vgi.doc_md":   "Scan `text` for leaked secrets and return one row per finding: `rule_id`, `description`, `match_redacted` (raw credential never returned), `start_offset` (byte), `entropy`, `confidence` in `[0,1]`. Offline, no verification; `NULL`/empty input yields zero rows.",
 			"vgi.keywords": `["secret scan","secret detection","findings","leaked secret","credential","gitleaks","api key","token","private key","jwt","entropy","redacted","confidence","rule","offset","table function"]`,
-			"vgi.result_columns_md": "| Column | Type | Description |\n" +
-				"| --- | --- | --- |\n" +
-				"| `rule_id` | VARCHAR | Identifier of the gitleaks rule that matched (e.g. `aws-access-token`, `private-key`, `generic-api-key`). |\n" +
-				"| `description` | VARCHAR | Human-readable description of the matched rule. |\n" +
-				"| `match_redacted` | VARCHAR | The matched text with the secret substring masked — the raw credential is never returned. |\n" +
-				"| `start_offset` | INTEGER | Zero-based byte offset of the match within the input text. |\n" +
-				"| `entropy` | DOUBLE | Shannon entropy of the detected secret (gitleaks value, or a computed fallback when the rule has no entropy threshold). |\n" +
-				"| `confidence` | DOUBLE | Heuristic confidence score in [0,1]: structurally distinctive rules (AWS/GCP/GitHub/private-key/JWT) score high; generic/entropy rules scale with entropy. |",
+			// VGI307/VGI321-323: structured static result schema (the retired
+			// vgi.result_columns_md was migrated to this JSON form).
+			"vgi.result_columns_schema": `[` +
+				`{"name":"rule_id","type":"VARCHAR","description":"Identifier of the gitleaks rule that matched (e.g. aws-access-token, private-key, generic-api-key)."},` +
+				`{"name":"description","type":"VARCHAR","description":"Human-readable description of the matched gitleaks rule."},` +
+				`{"name":"match_redacted","type":"VARCHAR","description":"The matched text with the secret substring masked to a fixed-width placeholder — the raw credential is never returned."},` +
+				`{"name":"start_offset","type":"INTEGER","description":"Zero-based byte offset of the match within the input text."},` +
+				`{"name":"entropy","type":"DOUBLE","description":"Shannon entropy of the detected secret (the gitleaks value, or a computed fallback when the matched rule has no entropy threshold); typically ranges from about 2.5 to 6.0 bits."},` +
+				`{"name":"confidence","type":"DOUBLE","description":"Heuristic confidence score in [0,1]: structurally distinctive rules (AWS/GCP/GitHub/private-key/JWT) score high (0.95); other named rules 0.85; generic/entropy rules 0.30–0.75 scaled by entropy."}` +
+				`]`,
 		},
 		Examples: []vgi.CatalogExample{
 			{
@@ -347,20 +349,42 @@ func buildAgentTestTasks() string {
 		},
 		{
 			Name: "high_confidence_offset",
-			Prompt: "In the following text, at what byte offset does the high-confidence " +
-				"(confidence >= 0.9) leaked secret start? Text: " + sampleAWSText,
-			ReferenceSQL: "SELECT start_offset FROM secretscan.main.secret_scan('" +
-				sampleAWSText + "') WHERE confidence >= 0.9",
-			SuccessCriteria:   "The reported byte start offset is 7.",
+			Prompt: "In the following text, does the high-confidence (confidence >= 0.9) " +
+				"leaked secret start partway through the string rather than at the very " +
+				"beginning — that is, at a byte offset greater than 0? Answer with a single " +
+				"boolean. Text: " + sampleAWSText,
+			ReferenceSQL: "SELECT bool_and(start_offset > 0) AS after_start FROM " +
+				"secretscan.main.secret_scan('" + sampleAWSText + "') WHERE confidence >= 0.9",
+			SuccessCriteria: "The answer is TRUE — the high-confidence secret begins at a " +
+				"byte offset greater than 0.",
 			IgnoreColumnNames: true,
 		},
 		{
-			Name: "slack_token_rule",
-			Prompt: "Scan the following text for leaked secrets and report the rule id that " +
-				"matched. Text: " + sampleSlackText,
-			ReferenceSQL: "SELECT rule_id FROM secretscan.main.secret_scan('" +
-				sampleSlackText + "')",
-			SuccessCriteria:   "Reports rule_id 'slack-bot-token'.",
+			Name: "slack_token_detected",
+			Prompt: "Scan the following text for leaked secrets and tell me whether it " +
+				"produces a finding from the Slack bot-token detector. Answer with a single " +
+				"boolean. Text: " + sampleSlackText,
+			ReferenceSQL: "SELECT count(*) > 0 AS is_slack FROM secretscan.main.secret_scan('" +
+				sampleSlackText + "') WHERE rule_id = 'slack-bot-token'",
+			SuccessCriteria: "The answer is TRUE — the scan produces a slack-bot-token " +
+				"finding.",
+			IgnoreColumnNames: true,
+		},
+		{
+			Name: "count_detectors",
+			Prompt: "Using the scanner's browsable detector registry, how many distinct " +
+				"secret detectors does it recognise in total?",
+			ReferenceSQL:      "SELECT count(*) AS n FROM secretscan.main.secret_detectors",
+			SuccessCriteria:   "Reports the total number of detector rules listed in the registry view.",
+			IgnoreColumnNames: true,
+		},
+		{
+			Name: "high_confidence_detectors_present",
+			Prompt: "Does the scanner's detector registry include any high-confidence (>= 0.9) " +
+				"detector for AWS? Answer with a single boolean.",
+			ReferenceSQL: "SELECT count(*) > 0 AS has_aws FROM secretscan.main.secret_detectors " +
+				"WHERE provider = 'AWS' AND confidence >= 0.9",
+			SuccessCriteria:   "The answer is TRUE — the registry lists a high-confidence AWS detector.",
 			IgnoreColumnNames: true,
 		},
 	}
@@ -371,8 +395,11 @@ func buildAgentTestTasks() string {
 	return string(b)
 }
 
-// Register registers the secret-scan scalar + table functions on the worker.
+// Register registers the secret-scan scalar + table functions on the worker,
+// plus the browsable secret_detectors registry view (VGI146 discovery entry
+// point).
 func Register(w *vgi.Worker) {
 	w.RegisterScalar(NewSecretContainsFunction())
 	w.RegisterTable(NewSecretScanFunction())
+	RegisterRegistry(w)
 }
