@@ -95,16 +95,28 @@ func (f *SecretContainsFunction) Metadata() vgi.FunctionMetadata {
 			"vgi.title": "Secret Present Predicate",
 			// VGI413: name one of the schema's vgi.categories entries.
 			"vgi.category": "Detection",
-			"vgi.doc_llm":  "Return a BOOLEAN reporting whether a text or source-code value contains at least one detectable leaked secret (cloud keys, API tokens, private keys, JWTs, high-entropy strings) using the embedded gitleaks ruleset plus Shannon-entropy heuristics. It is the cheap predicate for WHERE-clause filtering; pass the same text to secret_scan to enumerate the individual findings. Detection is offline (no network), never verifies whether the secret is live, and returns NULL for a NULL input.",
+			"vgi.doc_llm":  "Return a `BOOLEAN` reporting whether a text or source-code value contains at least one detectable leaked secret (cloud keys, API tokens, private keys, JWTs, high-entropy strings) using the embedded gitleaks ruleset plus Shannon-entropy heuristics. It is the cheap predicate for WHERE-clause filtering; pass the same text to secret_scan to enumerate the individual findings. Detection is offline (no network), never verifies whether the secret is live, and returns `NULL` for a `NULL` input.",
 			"vgi.doc_md":   "Return `TRUE` when `text` holds at least one detectable leaked secret (gitleaks ruleset + entropy), else `FALSE` (`NULL` for `NULL` input). The cheap predicate for filtering; use `secret_scan` for the findings. Offline, no verification.",
 			"vgi.keywords": `["secret","leaked secret","credential","contains secret","secret detection","gitleaks","api key","token","private key","jwt","entropy","predicate","boolean","filter"]`,
-			"vgi.executable_examples": `[` +
-				`{"description":"Detect an AWS-style secret access key in a string (TRUE).",` +
+			// VGI515: described example carrier. The SQL is byte-identical to the
+			// native Examples below so the loader dedupes them into one described
+			// example (the native duckdb_functions().examples carrier drops the
+			// per-example description).
+			"vgi.example_queries": `[` +
+				`{"description":"Check whether a single string holds any detectable secret (returns TRUE here for the AWS-style key).",` +
 				`"sql":"SELECT secretscan.main.secret_contains('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') AS leaked;"},` +
-				`{"description":"A benign string with no secret (FALSE).",` +
-				`"sql":"SELECT secretscan.main.secret_contains('the quick brown fox jumps over the lazy dog') AS leaked;"},` +
-				`{"description":"Enumerate findings for a leaked AWS-style key, with rule and confidence.",` +
-				`"sql":"SELECT rule_id, confidence FROM secretscan.main.secret_scan('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T');"}` +
+				`{"description":"Check a benign string with no secret (returns FALSE).",` +
+				`"sql":"SELECT secretscan.main.secret_contains('just a harmless note, nothing to see here') AS leaked;"}` +
+				`]`,
+			// VGI509: guaranteed-runnable, verified examples (with expected_result)
+			// so agents have a self-contained example to learn from and re-run.
+			"vgi.executable_examples": `[` +
+				`{"description":"Detect an AWS-style secret access key in a string (returns TRUE).",` +
+				`"sql":"SELECT secretscan.main.secret_contains('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') AS leaked;",` +
+				`"expected_result":[{"leaked":true}]},` +
+				`{"description":"A benign string with no secret (returns FALSE).",` +
+				`"sql":"SELECT secretscan.main.secret_contains('the quick brown fox jumps over the lazy dog') AS leaked;",` +
+				`"expected_result":[{"leaked":false}]}` +
 				`]`,
 		},
 		Examples: []vgi.CatalogExample{
@@ -203,6 +215,14 @@ func (f *SecretScanFunction) Metadata() vgi.FunctionMetadata {
 				`{"name":"start_offset","type":"INTEGER","description":"Zero-based byte offset of the match within the input text."},` +
 				`{"name":"entropy","type":"DOUBLE","description":"Shannon entropy of the detected secret (the gitleaks value, or a computed fallback when the matched rule has no entropy threshold); typically ranges from about 2.5 to 6.0 bits."},` +
 				`{"name":"confidence","type":"DOUBLE","description":"Heuristic confidence score in [0,1]: structurally distinctive rules (AWS/GCP/GitHub/private-key/JWT) score high (0.95); other named rules 0.85; generic/entropy rules 0.30–0.75 scaled by entropy."}` +
+				`]`,
+			// VGI515: described example carrier. SQL byte-identical to the native
+			// Examples below so the loader dedupes them into one described example.
+			"vgi.example_queries": `[` +
+				`{"description":"List each secret found in a string, with its rule, redacted match, and confidence.",` +
+				`"sql":"SELECT rule_id, match_redacted, confidence FROM secretscan.main.secret_scan('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T');"},` +
+				`{"description":"List only the high-confidence findings (confidence >= 0.9) in a string, with each finding's byte offset.",` +
+				`"sql":"SELECT rule_id, start_offset FROM secretscan.main.secret_scan('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') WHERE confidence >= 0.9;"}` +
 				`]`,
 		},
 		Examples: []vgi.CatalogExample{

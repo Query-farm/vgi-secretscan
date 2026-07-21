@@ -3,8 +3,8 @@ module github.com/Query-farm/vgi-secretscan
 go 1.25.0
 
 require (
-	github.com/Query-farm/vgi-go v0.14.0
-	github.com/Query-farm/vgi-rpc-go v0.12.0
+	github.com/Query-farm/vgi-go v0.16.0
+	github.com/Query-farm/vgi-rpc-go v0.16.0
 	github.com/apache/arrow-go/v18 v18.6.0
 	github.com/zricethezav/gitleaks/v8 v8.30.1
 )
@@ -17,7 +17,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/STARRY-S/zip v0.2.3 // indirect
 	github.com/andybalholm/brotli v1.2.2 // indirect
-	github.com/apache/thrift v0.23.0 // indirect
+	github.com/apache/thrift v0.24.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/bodgit/plumbing v1.3.0 // indirect
 	github.com/bodgit/sevenzip v1.6.4 // indirect
@@ -87,7 +87,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go4.org v0.0.0-20260112195520-a5071408f32f // indirect
 	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect
+	golang.org/x/exp v0.0.0-20260718201538-764159d718ef // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
