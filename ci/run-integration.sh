@@ -34,6 +34,15 @@
 # Optional:
 #   TRANSPORT              subprocess (default) | http | unix
 #   STAGE                  scratch dir for the preprocessed test tree (default: mktemp)
+#   TEST_PATTERN           runner glob/path under the staged tree to execute
+#                          (default: test/sql/*). All files are always staged;
+#                          this only narrows what RUNS — e.g. a single-file smoke
+#                          through the stdio Docker image.
+#
+# For TRANSPORT=http, if VGI_SECRETSCAN_WORKER is ALREADY an http(s):// URL (e.g.
+# a pre-launched container in the docker image_test), it is used as-is and NO
+# out-of-band worker is spawned. Detection is offline, so there is no mock
+# backend to gate — a SKIP_MOCK knob is intentionally not needed here.
 set -euo pipefail
 
 : "${HAYBARN_UNITTEST:?path to the haybarn-unittest binary}"
@@ -77,31 +86,39 @@ case "$TRANSPORT" in
     ;;
 
   http)
-    # Start the worker in --http mode; it prints "PORT:<n>" once listening.
-    WORKER_PORT_FILE="$(mktemp)"
-    echo "Transport: http — starting '$WORKER_BIN --http' ..."
-    "$WORKER_BIN" --http >"$WORKER_PORT_FILE" 2>/dev/null &
-    WORKER_PID=$!
-    WPORT=""
-    for _ in $(seq 1 50); do
-      WPORT="$(sed -n 's/^PORT:\([0-9][0-9]*\)$/\1/p' "$WORKER_PORT_FILE" 2>/dev/null | head -1)"
-      [ -n "$WPORT" ] && break
-      # Bail early if the worker died.
-      kill -0 "$WORKER_PID" 2>/dev/null || { echo "ERROR: http worker exited before reporting a port" >&2; cat "$WORKER_PORT_FILE" >&2 || true; exit 1; }
-      sleep 0.2
-    done
-    rm -f "$WORKER_PORT_FILE"
-    if [ -z "$WPORT" ]; then
-      echo "ERROR: http worker did not report a port" >&2
-      exit 1
+    # Honor a pre-launched HTTP worker (e.g. a running container in the docker
+    # image_test): if VGI_SECRETSCAN_WORKER already points at an http(s) URL, use
+    # it as-is and skip spawning a local binary. The awk httpfs injection below
+    # still runs because TRANSPORT=http.
+    if [[ "$VGI_SECRETSCAN_WORKER" =~ ^https?:// ]]; then
+      echo "Using pre-launched HTTP worker at $VGI_SECRETSCAN_WORKER"
+    else
+      # Start the worker in --http mode; it prints "PORT:<n>" once listening.
+      WORKER_PORT_FILE="$(mktemp)"
+      echo "Transport: http — starting '$WORKER_BIN --http' ..."
+      "$WORKER_BIN" --http >"$WORKER_PORT_FILE" 2>/dev/null &
+      WORKER_PID=$!
+      WPORT=""
+      for _ in $(seq 1 50); do
+        WPORT="$(sed -n 's/^PORT:\([0-9][0-9]*\)$/\1/p' "$WORKER_PORT_FILE" 2>/dev/null | head -1)"
+        [ -n "$WPORT" ] && break
+        # Bail early if the worker died.
+        kill -0 "$WORKER_PID" 2>/dev/null || { echo "ERROR: http worker exited before reporting a port" >&2; cat "$WORKER_PORT_FILE" >&2 || true; exit 1; }
+        sleep 0.2
+      done
+      rm -f "$WORKER_PORT_FILE"
+      if [ -z "$WPORT" ]; then
+        echo "ERROR: http worker did not report a port" >&2
+        exit 1
+      fi
+      # The extension treats the LOCATION as a base and POSTs each RPC method at
+      # <LOCATION>/<method> (e.g. /catalog_attach). The SDK mounts those methods
+      # at the server root (empty prefix), so the LOCATION must be the bare
+      # scheme://host:port with NO path. Appending /vgi would make every method
+      # 404 — which the runner silently skips as an error "matching 'HTTP'".
+      export VGI_SECRETSCAN_WORKER="http://127.0.0.1:$WPORT"
+      echo "HTTP worker listening on $VGI_SECRETSCAN_WORKER (pid $WORKER_PID)"
     fi
-    # The extension treats the LOCATION as a base and POSTs each RPC method at
-    # <LOCATION>/<method> (e.g. /catalog_attach). The SDK mounts those methods
-    # at the server root (empty prefix), so the LOCATION must be the bare
-    # scheme://host:port with NO path. Appending /vgi would make every method
-    # 404 — which the runner silently skips as an error "matching 'HTTP'".
-    export VGI_SECRETSCAN_WORKER="http://127.0.0.1:$WPORT"
-    echo "HTTP worker listening on $VGI_SECRETSCAN_WORKER (pid $WORKER_PID)"
     ;;
 
   unix)
@@ -193,10 +210,11 @@ rm -f "$STAGE/test/_warm.test"
 # "All tests were skipped" and the job would go GREEN having run nothing — a
 # fake pass. We detect that and fail explicitly. A real run prints
 # "All tests passed (N assertions ...)".
-echo "Running suite (transport: $TRANSPORT, worker: $VGI_SECRETSCAN_WORKER) ..."
+TEST_PATTERN="${TEST_PATTERN:-test/sql/*}"
+echo "Running suite (transport: $TRANSPORT, worker: $VGI_SECRETSCAN_WORKER, pattern: $TEST_PATTERN) ..."
 RUN_LOG="$STAGE/run.log"
 set +e
-"$HAYBARN_UNITTEST" "test/sql/*" 2>&1 | tee "$RUN_LOG"
+"$HAYBARN_UNITTEST" "$TEST_PATTERN" 2>&1 | tee "$RUN_LOG"
 RUN_RC="${PIPESTATUS[0]}"
 set -e
 

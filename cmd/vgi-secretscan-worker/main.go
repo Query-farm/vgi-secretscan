@@ -25,12 +25,18 @@ func main() {
 	// VGI extension varies argv to key its worker cache), so we filter to flags
 	// we actually define before parsing.
 	httpMode := flag.Bool("http", false, "Run as an HTTP server instead of stdio")
+	// vgi-go's RunHttp binds EXACTLY the address passed here; the default
+	// 127.0.0.1:0 (loopback + ephemeral port) is right for dev/CI, where the
+	// runner reads the announced "PORT:<n>". A container entrypoint overrides
+	// it to 0.0.0.0:$PORT so a published host port reaches the server.
+	httpAddr := flag.String("http-addr", "127.0.0.1:0", "HTTP listen address (ignored unless --http)")
 	unixPath := flag.String("unix", "", "Serve the AF_UNIX launcher transport on this socket path instead of stdio")
 	logFlags := vgi.RegisterLoggingFlags(flag.CommandLine)
 	_ = flag.CommandLine.Parse(filterKnownFlags(os.Args[1:], map[string]bool{
 		"log-level":  true,
 		"log-format": true,
 		"log-logger": true,
+		"http-addr":  true,
 		"unix":       true,
 	}))
 	if err := logFlags.Apply(); err != nil {
@@ -95,7 +101,7 @@ func main() {
 	secretworker.Register(w)
 
 	if *httpMode {
-		if err := w.RunHttp("127.0.0.1:0"); err != nil {
+		if err := w.RunHttp(*httpAddr); err != nil {
 			log.Fatal(err)
 		}
 		return
