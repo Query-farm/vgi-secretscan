@@ -1,0 +1,41 @@
+# Private graders for the agent-suitability suite (`vgi-lint simulate`).
+#
+# The prompts are published in the catalog's vgi.agent_test_tasks tag
+# (internal/secretworker/functions.go); the answers live here, keyed by task
+# name, so the agent being graded never sees them (VGI416). vgi-lint discovers
+# this file in the directory it runs from. Every reference operates on an inline,
+# clearly-fake literal, so the suite runs deterministically with no network.
+
+tasks:
+  - name: contains_secret_true
+    reference_sql: "SELECT secretscan.main.secret_contains('deploy AKIAZ3MZ7EXAMPLE4Q2T now') AS leaked"
+    success_criteria: "The answer is TRUE — the text contains a detectable secret."
+    ignore_column_names: true
+  - name: contains_secret_false
+    reference_sql: "SELECT secretscan.main.secret_contains('the quick brown fox jumps over the lazy dog') AS leaked"
+    success_criteria: "The answer is FALSE — the sentence contains no detectable secret."
+    ignore_column_names: true
+  - name: count_findings
+    reference_sql: "SELECT count(*) AS n FROM secretscan.main.secret_scan('deploy AKIAZ3MZ7EXAMPLE4Q2T now')"
+    success_criteria: "The count of findings is 1."
+    ignore_column_names: true
+  - name: rule_and_redacted_match
+    reference_sql: "SELECT rule_id, match_redacted FROM secretscan.main.secret_scan('deploy AKIAZ3MZ7EXAMPLE4Q2T now')"
+    success_criteria: "Reports rule_id 'aws-access-token' and a redacted match that masks the raw key (e.g. AKIA********4Q2T), never the full credential."
+    ignore_column_names: true
+  - name: high_confidence_offset
+    reference_sql: "SELECT bool_and(start_offset > 0) AS after_start FROM secretscan.main.secret_scan('deploy AKIAZ3MZ7EXAMPLE4Q2T now') WHERE confidence >= 0.9"
+    success_criteria: "The answer is TRUE — the high-confidence secret begins at a byte offset greater than 0."
+    ignore_column_names: true
+  - name: slack_token_detected
+    reference_sql: "SELECT count(*) > 0 AS is_slack FROM secretscan.main.secret_scan('token xoxb-1234567890-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx') WHERE rule_id = 'slack-bot-token'"
+    success_criteria: "The answer is TRUE — the scan produces a slack-bot-token finding."
+    ignore_column_names: true
+  - name: count_detectors
+    reference_sql: "SELECT count(*) AS n FROM secretscan.main.secret_detectors"
+    success_criteria: "Reports the total number of detector rules listed in the registry view."
+    ignore_column_names: true
+  - name: high_confidence_detectors_present
+    reference_sql: "SELECT count(*) > 0 AS has_aws FROM secretscan.main.secret_detectors WHERE provider = 'AWS' AND confidence >= 0.9"
+    success_criteria: "The answer is TRUE — the registry lists a high-confidence AWS detector."
+    ignore_column_names: true

@@ -323,49 +323,29 @@ var AgentTestTasks = buildAgentTestTasks()
 
 func buildAgentTestTasks() string {
 	type task struct {
-		Name              string `json:"name"`
-		Prompt            string `json:"prompt"`
-		ReferenceSQL      string `json:"reference_sql"`
-		SuccessCriteria   string `json:"success_criteria"`
-		IgnoreColumnNames bool   `json:"ignore_column_names,omitempty"`
+		Name   string `json:"name"`
+		Prompt string `json:"prompt"`
 	}
 	tasks := []task{
 		{
 			Name: "contains_secret_true",
 			Prompt: "Does the following text contain any leaked secret? Answer with a single " +
 				"boolean. Text: " + sampleAWSText,
-			ReferenceSQL: "SELECT secretscan.main.secret_contains('" + sampleAWSText +
-				"') AS leaked",
-			SuccessCriteria:   "The answer is TRUE — the text contains a detectable secret.",
-			IgnoreColumnNames: true,
 		},
 		{
 			Name: "contains_secret_false",
 			Prompt: "Does the following benign sentence contain any leaked secret? Answer " +
 				"with a single boolean. Text: " + sampleCleanText,
-			ReferenceSQL: "SELECT secretscan.main.secret_contains('" + sampleCleanText +
-				"') AS leaked",
-			SuccessCriteria:   "The answer is FALSE — the sentence contains no detectable secret.",
-			IgnoreColumnNames: true,
 		},
 		{
 			Name: "count_findings",
 			Prompt: "Scan the following text for leaked secrets and tell me how many findings " +
 				"it produces. Text: " + sampleAWSText,
-			ReferenceSQL: "SELECT count(*) AS n FROM secretscan.main.secret_scan('" +
-				sampleAWSText + "')",
-			SuccessCriteria:   "The count of findings is 1.",
-			IgnoreColumnNames: true,
 		},
 		{
 			Name: "rule_and_redacted_match",
 			Prompt: "Scan the following text for leaked secrets and report, for each finding, " +
 				"the matched rule id and the redacted match. Text: " + sampleAWSText,
-			ReferenceSQL: "SELECT rule_id, match_redacted FROM secretscan.main.secret_scan('" +
-				sampleAWSText + "')",
-			SuccessCriteria: "Reports rule_id 'aws-access-token' and a redacted match that " +
-				"masks the raw key (e.g. AKIA********4Q2T), never the full credential.",
-			IgnoreColumnNames: true,
 		},
 		{
 			Name: "high_confidence_offset",
@@ -373,39 +353,22 @@ func buildAgentTestTasks() string {
 				"leaked secret start partway through the string rather than at the very " +
 				"beginning — that is, at a byte offset greater than 0? Answer with a single " +
 				"boolean. Text: " + sampleAWSText,
-			ReferenceSQL: "SELECT bool_and(start_offset > 0) AS after_start FROM " +
-				"secretscan.main.secret_scan('" + sampleAWSText + "') WHERE confidence >= 0.9",
-			SuccessCriteria: "The answer is TRUE — the high-confidence secret begins at a " +
-				"byte offset greater than 0.",
-			IgnoreColumnNames: true,
 		},
 		{
 			Name: "slack_token_detected",
 			Prompt: "Scan the following text for leaked secrets and tell me whether it " +
 				"produces a finding from the Slack bot-token detector. Answer with a single " +
 				"boolean. Text: " + sampleSlackText,
-			ReferenceSQL: "SELECT count(*) > 0 AS is_slack FROM secretscan.main.secret_scan('" +
-				sampleSlackText + "') WHERE rule_id = 'slack-bot-token'",
-			SuccessCriteria: "The answer is TRUE — the scan produces a slack-bot-token " +
-				"finding.",
-			IgnoreColumnNames: true,
 		},
 		{
 			Name: "count_detectors",
 			Prompt: "Using the scanner's browsable detector registry, how many distinct " +
 				"secret detectors does it recognise in total?",
-			ReferenceSQL:      "SELECT count(*) AS n FROM secretscan.main.secret_detectors",
-			SuccessCriteria:   "Reports the total number of detector rules listed in the registry view.",
-			IgnoreColumnNames: true,
 		},
 		{
 			Name: "high_confidence_detectors_present",
 			Prompt: "Does the scanner's detector registry include any high-confidence (>= 0.9) " +
 				"detector for AWS? Answer with a single boolean.",
-			ReferenceSQL: "SELECT count(*) > 0 AS has_aws FROM secretscan.main.secret_detectors " +
-				"WHERE provider = 'AWS' AND confidence >= 0.9",
-			SuccessCriteria:   "The answer is TRUE — the registry lists a high-confidence AWS detector.",
-			IgnoreColumnNames: true,
 		},
 	}
 	b, err := json.Marshal(tasks)
