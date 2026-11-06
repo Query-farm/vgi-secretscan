@@ -13,7 +13,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- build stage -----------------------------------------------------------
-# CGO is REQUIRED: the vgi-go SDK links DuckDB (via duckdb/duckdb-go), so
+# CGO is REQUIRED: the vgi-go SDK links the Haybarn 2.0 engine (via the haybarn-go bindings), so
 # CGO_ENABLED=0 fails to select a platform binding. Pinned glibc (bookworm) so
 # the binary links against the same libc the slim runtime ships. gcc/g++ back
 # the cgo compile + C++ link of the embedded DuckDB.
