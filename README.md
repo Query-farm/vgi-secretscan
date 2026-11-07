@@ -27,8 +27,7 @@ VGI protocol over stdio. Catalog name: `secretscan`.
 ```sql
 INSTALL vgi FROM community; LOAD vgi;
 
--- LOCATION is the path to the compiled worker binary.
-ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION '/path/to/vgi-secretscan-worker');
+ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION 'github-auto://Query-farm/vgi-secretscan@v0.2.1');
 
 -- Cheap predicate: does this text contain any secret? (great in a WHERE clause)
 SELECT secretscan.secret_contains('deploy AKIAZ3MZ7EXAMPLE4Q2T now');  -- true
@@ -40,6 +39,40 @@ FROM secretscan.secret_scan('SLACK_TOKEN=xoxb-1234567890-1234567890123-AbCdEfGhI
 ```
 
 > The secrets shown throughout this README are **fake, non-live** test fixtures.
+
+## Quick start
+
+Every [GitHub release](https://github.com/Query-farm/vgi-secretscan/releases) ships a prebuilt worker binary. The `vgi` extension downloads the one for your platform, checks its SHA-256 and caches it, so there is nothing to install besides DuckDB:
+
+```sql
+INSTALL vgi FROM community;
+LOAD vgi;
+
+ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION 'github-auto://Query-farm/vgi-secretscan@v0.2.1');
+
+-- Predicate: does this string hold any detectable secret? (Returns TRUE for the AWS-
+-- style key.)
+SELECT secretscan.main.secret_contains('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') AS leaked;
+
+-- Enumerate each finding with its rule, redacted match, and confidence.
+SELECT rule_id, match_redacted, confidence FROM secretscan.main.secret_scan('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T');
+```
+
+Prebuilt binaries cover macOS (Apple silicon), Linux (x86-64 and arm64) and Windows (x86-64). `github-auto://` needs an explicit release tag; change `@v0.2.1` to move to a newer release.
+
+### Other ways to run it
+
+- **Docker** (the image bundles the worker; needs a container runtime):
+
+  ```sql
+  ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION 'docker://ghcr.io/query-farm/vgi-secretscan:0.2.1');
+  ```
+
+- **Manual download.** Download the archive for your platform from the [releases page](https://github.com/Query-farm/vgi-secretscan/releases), verify it against its `.sha256` file (a cosign `.cosign.bundle` is published alongside), unpack it, and set `LOCATION` to the path of the extracted worker executable.
+
+### Build from source
+
+To build the worker yourself, see [Build](#build).
 
 ## Functions
 
