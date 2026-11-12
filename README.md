@@ -27,7 +27,7 @@ VGI protocol over stdio. Catalog name: `secretscan`.
 ```sql
 INSTALL vgi FROM community; LOAD vgi;
 
-ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION 'github-auto://Query-farm/vgi-secretscan@v0.3.0');
+ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION 'github-auto://Query-farm/vgi-secretscan@v0.4.0');
 
 -- Cheap predicate: does this text contain any secret? (great in a WHERE clause)
 SELECT secretscan.secret_contains('deploy AKIAZ3MZ7EXAMPLE4Q2T now');  -- true
@@ -48,7 +48,7 @@ Every [GitHub release](https://github.com/Query-farm/vgi-secretscan/releases) sh
 INSTALL vgi FROM community;
 LOAD vgi;
 
-ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION 'github-auto://Query-farm/vgi-secretscan@v0.3.0');
+ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION 'github-auto://Query-farm/vgi-secretscan@v0.4.0');
 
 -- Predicate: does this string hold any detectable secret? (Returns TRUE for the AWS-
 -- style key.)
@@ -58,14 +58,14 @@ SELECT secretscan.main.secret_contains('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') AS l
 SELECT rule_id, match_redacted, confidence FROM secretscan.main.secret_scan('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T');
 ```
 
-Prebuilt binaries cover macOS (Apple silicon), Linux (x86-64 and arm64) and Windows (x86-64). `github-auto://` needs an explicit release tag; change `@v0.3.0` to move to a newer release.
+Prebuilt binaries cover macOS (Apple silicon), Linux (x86-64 and arm64) and Windows (x86-64). `github-auto://` needs an explicit release tag; change `@v0.4.0` to move to a newer release.
 
 ### Other ways to run it
 
 - **Docker** (the image bundles the worker; needs a container runtime):
 
   ```sql
-  ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION 'docker://ghcr.io/query-farm/vgi-secretscan:0.3.0');
+  ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION 'docker://ghcr.io/query-farm/vgi-secretscan:0.4.0');
   ```
 
 - **Manual download.** Download the archive for your platform from the [releases page](https://github.com/Query-farm/vgi-secretscan/releases), verify it against its `.sha256` file (a cosign `.cosign.bundle` is published alongside), unpack it, and set `LOCATION` to the path of the extracted worker executable.
