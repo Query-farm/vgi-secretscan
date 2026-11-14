@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "repository": "Query-farm/vgi-secretscan",
+  "revision": "1621fdd53ee79fbc03e5d5b8fb8a08090c4d0210",
+  "captured_at": "2026-11-14T20:55:35.186318+00:00",
+  "default_schema": "main",
+  "scope": "all_public_functions_and_tables",
+  "complete": true,
+  "evidence": [
+    {
+      "path": "coverage/catalog-provenance.json",
+      "sha256": "7a0846031dd7ecbb15ca3b4e9f2f504c8e1b26d7b9f2677a34f38f6a11878047",
+      "description": "Precise runtime/source identities and scope of compatibility review."
+    },
+    {
+      "path": "coverage/current-source-registration.json",
+      "sha256": "76c7cabc39f27c19fbe2817a2a3b67222ee03af706ad4902e1eb9f2de0cf90a4",
+      "description": "Exhaustive current function/view registrations, immutable source links/hashes and complete implementation diff; no current runtime execution."
+    }
+  ],
+  "objects": [
+    {
+      "schema": "main",
+      "name": "secret_scan",
+      "kind": "function",
+      "signatures": [
+        "secret_scan(VARCHAR) -> TABLE"
+      ],
+      "authentication": "none",
+      "access": "read"
+    },
+    {
+      "schema": "main",
+      "name": "secret_contains",
+      "kind": "function",
+      "signatures": [
+        "secret_contains(VARCHAR) -> BOOLEAN"
+      ],
+      "authentication": "none",
+      "access": "read"
+    },
+    {
+      "schema": "main",
+      "name": "secret_detectors",
+      "kind": "table",
+      "signatures": [
+        "VIEW"
+      ],
+      "authentication": "none",
+      "access": "read"
+    }
+  ]
+}

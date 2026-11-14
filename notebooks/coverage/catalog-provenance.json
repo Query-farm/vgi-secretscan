@@ -1,0 +1,11 @@
+{
+  "repository": "Query-farm/vgi-secretscan",
+  "release_tag": "v0.4.0",
+  "release_revision": "3e9aa08494db616ea73e4174040a2037da0d6dfa",
+  "current_public_revision": "1621fdd53ee79fbc03e5d5b8fb8a08090c4d0210",
+  "engine": "Haybarn 2.0.0rc11 / VGI e75482339d",
+  "released_launch": "github-auto://Query-farm/vgi-secretscan@v0.4.0",
+  "comparison": "Exhaustive public-main registration at 1621fdd53ee79fbc03e5d5b8fb8a08090c4d0210 finds secret_contains, secret_scan and the native secret_detectors view, with no other public/authentication/write surfaces. All logical names and signatures match the actual released catalog. Complete release-to-current implementation diff changes metadata and composed examples, including a clarified private-key-block description in the registry; scanning, redaction, confidence and dependencies are unchanged. Current-interface mappings are compatibility-reviewed against the actual released runtime. No current build/exact-current execution is claimed.",
+  "data_isolation": "Empty temporary SQL-secret storage; persistent secrets disabled. Only authored non-live credential-shaped inputs and benign/empty/NULL controls; no user files, repository scan, live credential verification or provider writes.",
+  "captured_at": "2026-11-14T20:55:35.186318+00:00"
+}

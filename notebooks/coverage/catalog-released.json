@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "repository": "Query-farm/vgi-secretscan",
+  "revision": "v0.4.0",
+  "captured_at": "2026-11-14T20:55:35.186318+00:00",
+  "default_schema": "main",
+  "scope": "all_public_functions_and_tables",
+  "complete": true,
+  "evidence": [
+    {
+      "path": "coverage/catalog-provenance.json",
+      "sha256": "7a0846031dd7ecbb15ca3b4e9f2f504c8e1b26d7b9f2677a34f38f6a11878047",
+      "description": "Precise runtime/source identities and scope of compatibility review."
+    },
+    {
+      "path": "coverage/released-functions.json",
+      "sha256": "269658530c368ae9585391c0ebdefb41b3ea48860ff15fac43dc2e979d6a98ab",
+      "description": "Complete actual worker-filtered duckdb_functions() export; empty physical-table inventory and native reference view retained."
+    },
+    {
+      "path": "coverage/released-tables.json",
+      "sha256": "5ee1efa4ca1e8e8edb474970aad3cb9a6dbe1a663ae6d2679f626387bb8be3b5",
+      "description": "Complete actual worker-filtered duckdb_tables() export; empty physical-table inventory and native reference view retained."
+    },
+    {
+      "path": "coverage/released-views.json",
+      "sha256": "1686ce82e56f3f469cdcdeeff2e03e77fed83e1c759699254ce7a5b4fc69f5e7",
+      "description": "Complete actual worker-filtered duckdb_views() export; empty physical-table inventory and native reference view retained."
+    },
+    {
+      "path": "coverage/released-database.json",
+      "sha256": "26c148e48c2c4ee54e9a22db28e50273cd913e642294b1db40892a9de68a7c6c",
+      "description": "Actual catalog title/subtitle/metadata."
+    }
+  ],
+  "objects": [
+    {
+      "schema": "main",
+      "name": "secret_scan",
+      "kind": "function",
+      "signatures": [
+        "secret_scan(VARCHAR) -> TABLE"
+      ],
+      "authentication": "none",
+      "access": "read"
+    },
+    {
+      "schema": "main",
+      "name": "secret_contains",
+      "kind": "function",
+      "signatures": [
+        "secret_contains(VARCHAR) -> BOOLEAN"
+      ],
+      "authentication": "none",
+      "access": "read"
+    },
+    {
+      "schema": "main",
+      "name": "secret_detectors",
+      "kind": "table",
+      "signatures": [
+        "VIEW"
+      ],
+      "authentication": "none",
+      "access": "read"
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "catalogs": {
+    "released": {
+      "path": "coverage/catalog-released.json",
+      "sha256": "743a006c00a9d3feee05cd7cddec42b8323ef683b442aa795f86259a4fe59a27",
+      "review": {
+        "status": "approved",
+        "reviewer": "Codex /root/notebooks_ortools",
+        "reviewed_at": "2026-11-14T20:55:35.186318+00:00",
+        "catalog_sha256": "743a006c00a9d3feee05cd7cddec42b8323ef683b442aa795f86259a4fe59a27",
+        "notes": "All three named public surfaces retained, including the native reference view. Individual detector rules are data, not separately named SQL objects. Exhaustive public-main registration at 1621fdd53ee79fbc03e5d5b8fb8a08090c4d0210 finds secret_contains, secret_scan and the native secret_detectors view, with no other public/authentication/write surfaces. All logical names and signatures match the actual released catalog. Complete release-to-current implementation diff changes metadata and composed examples, including a clarified private-key-block description in the registry; scanning, redaction, confidence and dependencies are unchanged. Current-interface mappings are compatibility-reviewed against the actual released runtime. No current build/exact-current execution is claimed."
+      }
+    },
+    "current": {
+      "path": "coverage/catalog-current.json",
+      "sha256": "09f418b8568c1d8f1841fb695d08414d3748c89b1419109188fd4d58fcdad8eb",
+      "review": {
+        "status": "approved",
+        "reviewer": "Codex /root/notebooks_ortools",
+        "reviewed_at": "2026-11-14T20:55:35.186318+00:00",
+        "catalog_sha256": "09f418b8568c1d8f1841fb695d08414d3748c89b1419109188fd4d58fcdad8eb",
+        "notes": "All three named public surfaces retained, including the native reference view. Individual detector rules are data, not separately named SQL objects. Exhaustive public-main registration at 1621fdd53ee79fbc03e5d5b8fb8a08090c4d0210 finds secret_contains, secret_scan and the native secret_detectors view, with no other public/authentication/write surfaces. All logical names and signatures match the actual released catalog. Complete release-to-current implementation diff changes metadata and composed examples, including a clarified private-key-block description in the registry; scanning, redaction, confidence and dependencies are unchanged. Current-interface mappings are compatibility-reviewed against the actual released runtime. No current build/exact-current execution is claimed."
+      }
+    }
+  },
+  "notebooks": [
+    {
+      "path": "01_keep_evidence_behind_a_review_queue.ipynb",
+      "sha256": "0fcc9469311d66c772c9544f8819a10bb5ab0ca16557149599c9b11ea2f357a3",
+      "execution": {
+        "path": "coverage/run-01.json",
+        "sha256": "0f4bea234dc94d5d3e01f3efe6eac55ba3db8c5d072cf0bb6391f5e83531a562"
+      }
+    }
+  ],
+  "examples": [
+    {
+      "object": {
+        "schema": "main",
+        "name": "secret_contains"
+      },
+      "notebook": "01_keep_evidence_behind_a_review_queue.ipynb",
+      "sql": [
+        {
+          "cell": "9a94c32d",
+          "reference": "secretscan.main.secret_contains"
+        }
+      ],
+      "narrative_cells": [
+        "ff9aaa3e"
+      ],
+      "result_cells": [
+        "9a94c32d",
+        "d33f1ae2"
+      ],
+      "interpretation_cells": [
+        "d33f1ae2"
+      ],
+      "review": {
+        "status": "approved",
+        "reviewer": "Codex /root/notebooks_ortools",
+        "reviewed_at": "2026-11-14T20:55:35.186318+00:00",
+        "notebook_sha256": "0fcc9469311d66c772c9544f8819a10bb5ab0ca16557149599c9b11ea2f357a3",
+        "catalog_sha256": [
+          "743a006c00a9d3feee05cd7cddec42b8323ef683b442aa795f86259a4fe59a27",
+          "09f418b8568c1d8f1841fb695d08414d3748c89b1419109188fd4d58fcdad8eb"
+        ],
+        "purpose": "Keep candidate, clean, allowlisted, empty and missing source populations distinct before prioritizing findings.",
+        "finding": "Five source inputs remain in the audit. The synthetic candidate file returns TRUE; ordinary text, the allowlisted documentation placeholder and empty text return FALSE; SQL NULL remains unknown. The experiment preserves this audit exactly. No-match is explicitly not proof of safety, and no credential validity is tested."
+      }
+    },
+    {
+      "object": {
+        "schema": "main",
+        "name": "secret_scan"
+      },
+      "notebook": "01_keep_evidence_behind_a_review_queue.ipynb",
+      "sql": [
+        {
+          "cell": "a21d8e27",
+          "reference": "secretscan.main.secret_scan"
+        }
+      ],
+      "narrative_cells": [
+        "40df55fd"
+      ],
+      "result_cells": [
+        "a21d8e27",
+        "bdea559a",
+        "772e035a",
+        "d33f1ae2"
+      ],
+      "interpretation_cells": [
+        "bdea559a"
+      ],
+      "review": {
+        "status": "approved",
+        "reviewer": "Codex /root/notebooks_ortools",
+        "reviewed_at": "2026-11-14T20:55:35.186318+00:00",
+        "notebook_sha256": "0fcc9469311d66c772c9544f8819a10bb5ab0ca16557149599c9b11ea2f357a3",
+        "catalog_sha256": [
+          "743a006c00a9d3feee05cd7cddec42b8323ef683b442aa795f86259a4fe59a27",
+          "09f418b8568c1d8f1841fb695d08414d3748c89b1419109188fd4d58fcdad8eb"
+        ],
+        "purpose": "Retain redacted evidence while changing only the review threshold, and test offset limitations separately.",
+        "finding": "Four materialized findings contain no complete synthetic value. Raising confidence from 0.70 to 0.90 selects AWS and Slack while retaining npm and generic findings below threshold; scores are heuristics rather than probabilities. The separate repeated-match probe returns two rows at the same byte offset 7, so offsets cannot deduplicate occurrences. UTF-8 offsets and exact scalar/table input agreement are checked."
+      }
+    },
+    {
+      "object": {
+        "schema": "main",
+        "name": "secret_detectors"
+      },
+      "notebook": "01_keep_evidence_behind_a_review_queue.ipynb",
+      "sql": [
+        {
+          "cell": "ee7818a0",
+          "reference": "secretscan.main.secret_detectors"
+        }
+      ],
+      "narrative_cells": [
+        "0c577a47"
+      ],
+      "result_cells": [
+        "2bfeff4c",
+        "a36d0fa6"
+      ],
+      "interpretation_cells": [
+        "a36d0fa6"
+      ],
+      "review": {
+        "status": "approved",
+        "reviewer": "Codex /root/notebooks_ortools",
+        "reviewed_at": "2026-11-14T20:55:35.186318+00:00",
+        "notebook_sha256": "0fcc9469311d66c772c9544f8819a10bb5ab0ca16557149599c9b11ea2f357a3",
+        "catalog_sha256": [
+          "743a006c00a9d3feee05cd7cddec42b8323ef683b442aa795f86259a4fe59a27",
+          "09f418b8568c1d8f1841fb695d08414d3748c89b1419109188fd4d58fcdad8eb"
+        ],
+        "purpose": "Use the curated registry to annotate findings without dropping unknown providers or treating representative confidence as an observed score.",
+        "finding": "The eleven-rule registry is smaller than the embedded engine. A left join preserves the npm finding with NULL metadata and labels its reporting group explicitly. Actual generic confidence differs from the registry representative value. Both selected and below-threshold populations sum to all four findings, even when selected counts for Generic and the unregistered group fall to zero."
+      }
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "query": "SELECT * FROM duckdb_views() WHERE database_name='secretscan'",
+  "columns": [
+    "database_name",
+    "database_oid",
+    "schema_name",
+    "schema_oid",
+    "view_name",
+    "view_oid",
+    "comment",
+    "tags",
+    "internal",
+    "temporary",
+    "column_count",
+    "sql",
+    "is_bound"
+  ],
+  "rows": [
+    [
+      "secretscan",
+      22592,
+      "main",
+      22593,
+      "secret_detectors",
+      22728,
+      "Curated registry of the notable gitleaks detector rules this worker flags (rule_id, provider, category, confidence, description) — browse it to see the detection surface before scanning with secret_contains / secret_scan.",
+      {
+        "category": "secret-detection",
+        "domain": "security",
+        "topic": "credential-leak-scanning",
+        "vgi.category": "Findings",
+        "vgi.doc_llm": "A browsable, zero-argument catalog of the notable gitleaks detector rules this worker recognises. Query it first to see what kinds of secrets are detected (cloud keys, VCS tokens, chat tokens, payment keys, private keys, JWTs, and a generic entropy catch-all), which provider each rule covers, and the confidence tier a match earns. The rule_id column matches secret_scan.rule_id, so you can map a scan finding back to its detector here. It is a static list, so it returns instantly with no network access or credentials.",
+        "vgi.doc_md": "## Recognised Secret Detectors\n\nA browsable, zero-argument view listing the marquee [gitleaks](https://github.com/gitleaks/gitleaks) detector rules this worker flags — a map of the detection surface for when you want to know *what* is detected before scanning any text.\n\n### Columns\n\n- **`rule_id`** — the gitleaks rule id (matches `secret_scan.rule_id`).\n- **`provider`** — the provider or credential family (AWS, GitHub, Slack, ...).\n- **`category`** — a broad grouping (Cloud Keys, VCS Tokens, Chat Tokens, Payment Keys, Private Keys, Tokens, Entropy).\n- **`confidence`** — the heuristic confidence in `[0,1]` a match of this rule earns (structural rules `0.95`; generic/entropy rules scale with entropy).\n- **`description`** — a one-line summary of what the detector matches.\n\n### Notes\n\nThe registry is a curated, representative slice of the full 200+-rule default ruleset, not an exhaustive list. It is a static VALUES list, so it returns instantly with no network access. Pick a `rule_id` here, then scan text with `secret_contains` / `secret_scan` and join the findings back on `rule_id`.",
+        "vgi.example_queries": "[{\"description\":\"Browse every detector this worker recognises, highest-confidence first.\",\"sql\":\"SELECT rule_id, provider, category, confidence FROM secretscan.main.secret_detectors ORDER BY confidence DESC, rule_id;\"},{\"description\":\"List only the high-confidence structural detectors (confidence \\u003e= 0.9).\",\"sql\":\"SELECT rule_id, provider FROM secretscan.main.secret_detectors WHERE confidence \\u003e= 0.9 ORDER BY rule_id;\"},{\"description\":\"Count the recognised detectors grouped by the provider family they cover.\",\"sql\":\"SELECT category, count(*) AS detectors FROM secretscan.main.secret_detectors GROUP BY category ORDER BY detectors DESC, category;\"}]",
+        "vgi.keywords": "[\"detector\",\"detectors\",\"rule\",\"ruleset\",\"gitleaks rules\",\"secret detectors\",\"provider\",\"confidence\",\"registry\",\"catalog\",\"aws\",\"github\",\"slack\",\"stripe\",\"private key\",\"jwt\",\"generic api key\"]",
+        "vgi.title": "Recognised Secret Detectors"
+      },
+      false,
+      false,
+      null,
+      "CREATE VIEW secret_detectors AS SELECT * FROM (SELECT * FROM (VALUES ('aws-access-token', 'AWS', 'Cloud Keys', CAST(0.95 AS DOUBLE), 'AWS access key id (AKIA/ASIA...) — a structurally distinctive cloud credential.'), ('gcp-api-key', 'GCP', 'Cloud Keys', CAST(0.95 AS DOUBLE), 'Google Cloud Platform API key.'), ('azure-ad-client-secret', 'Azure', 'Cloud Keys', CAST(0.95 AS DOUBLE), 'Azure Active Directory client secret.'), ('private-key', 'PEM', 'Private Keys', CAST(0.95 AS DOUBLE), 'PEM-encoded private key header (RSA/EC/OPENSSH/PGP).'), ('github-pat', 'GitHub', 'VCS Tokens', CAST(0.95 AS DOUBLE), 'GitHub personal access token (ghp_...).'), ('github-fine-grained-pat', 'GitHub', 'VCS Tokens', CAST(0.95 AS DOUBLE), 'GitHub fine-grained personal access token (github_pat_...).'), ('gitlab-pat', 'GitLab', 'VCS Tokens', CAST(0.95 AS DOUBLE), 'GitLab personal access token (glpat-...).'), ('slack-bot-token', 'Slack', 'Chat Tokens', CAST(0.95 AS DOUBLE), 'Slack bot token (xoxb-...).'), ('stripe-access-token', 'Stripe', 'Payment Keys', CAST(0.95 AS DOUBLE), 'Stripe secret API key (sk_live_.../sk_test_...).'), ('jwt', 'JWT', 'Tokens', CAST(0.95 AS DOUBLE), 'JSON Web Token (three base64url segments separated by dots).'), ('generic-api-key', 'Generic', 'Entropy', CAST(0.64 AS DOUBLE), 'Catch-all high-entropy api-key/secret assignment; confidence scales with entropy.')) AS valueslist) AS t(rule_id, provider, category, confidence, description);",
+      false
+    ]
+  ]
+}
