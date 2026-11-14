@@ -85,17 +85,10 @@ func main() {
 				"domain":   "security",
 				"category": "secret-detection",
 				"topic":    "credential-leak-scanning",
-				// VGI506/VGI515 representative example queries: a JSON list of
-				// {description, sql} objects, catalog-qualified, so every example
-				// carries a human-readable description.
-				"vgi.example_queries": `[` +
-					`{"description":"Predicate: does this string hold any detectable secret? (Returns TRUE for the AWS-style key.)",` +
-					`"sql":"SELECT secretscan.main.secret_contains('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') AS leaked;"},` +
-					`{"description":"Enumerate each finding with its rule, redacted match, and confidence.",` +
-					`"sql":"SELECT rule_id, match_redacted, confidence FROM secretscan.main.secret_scan('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T');"},` +
-					`{"description":"Browse the detector registry, highest-confidence first.",` +
-					`"sql":"SELECT rule_id, provider, confidence FROM secretscan.main.secret_detectors ORDER BY confidence DESC, rule_id;"}` +
-					`]`,
+				// VGI506/VGI515 representative example queries ({description, sql},
+				// catalog-qualified), including the composed examples (scan x registry,
+				// scan x secret_contains); see internal/secretworker/examples.go.
+				"vgi.example_queries": secretworker.SchemaExampleQueries(),
 			},
 		}),
 	)

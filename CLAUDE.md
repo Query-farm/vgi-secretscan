@@ -25,6 +25,9 @@ internal/secretworker/
   scan.go                           the offline core: Scan / Contains, redaction,
                                     entropy, confidence scoring (gitleaks-backed)
   functions.go                      the scalar + table VGI functions + Register(w)
+  examples.go                       every object's example queries (incl. composed
+                                    scan x registry / scan x secret_contains), defined once
+  registry.go                       the secret_detectors registry view
   scan_test.go                      pure-function tests (positive/negative fixtures,
                                     redaction invariant, offsets, entropy, redact)
   functions_test.go                 VGI Process-path tests + RegisterDoesNotPanic
@@ -118,7 +121,7 @@ correctly and terminates. `TestCursorSurvivesContinuation` guards this.
    extension is not autoloaded for `require`, so a `.test` using `require vgi`
    is skipped (looks green but ran nothing). Use an explicit `statement ok` /
    `LOAD vgi;` instead. The `.test` here `require-env VGI_SECRETSCAN_WORKER` and
-   `ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION '${VGI_SECRETSCAN_WORKER}')`.
+   `ATTACH 'secretscan' AS secretscan (TYPE vgi, LOCATION '{VGI_SECRETSCAN_WORKER}')`.
 5. **Offsets are bytes, not chars.** `start_offset` is a byte offset; the
    multi-secret `.test` case asserts the exact post-newline byte position.
 6. **Stable assertions.** SQL assertions check `rule_id`, `match_redacted`,
@@ -142,7 +145,10 @@ correctly and terminates. `TestCursorSurvivesContinuation` guards this.
 - **SQL (`make test-sql`)** — `test/sql/secretscan.test`: `secret_contains`
   true/false/NULL + a column WHERE-filter; `secret_scan` count, redacted-match,
   offset, confidence threshold, raw-secret-absence, entropy>3, multi-secret
-  ordering, and empty/NULL → zero rows. 26 assertions.
+  ordering, empty/NULL → zero rows, the composed example queries, and the
+  composed agent-task reference SQL. `examples_test.go` keeps each object's
+  example tag in lockstep with its native Examples and checks composed-example
+  placement.
 
 ## Maintenance
 

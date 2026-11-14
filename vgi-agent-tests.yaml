@@ -39,3 +39,12 @@ tasks:
     reference_sql: "SELECT count(*) > 0 AS has_aws FROM secretscan.main.secret_detectors WHERE provider = 'AWS' AND confidence >= 0.9"
     success_criteria: "The answer is TRUE — the registry lists a high-confidence AWS detector."
     ignore_column_names: true
+  # Composed tasks: secret_scan findings joined to the secret_detectors registry.
+  - name: providers_of_findings
+    reference_sql: "SELECT DISTINCT d.provider FROM secretscan.main.secret_scan('ci.yml: AWS_KEY=AKIAZ3MZ7EXAMPLE4Q2T GH_TOKEN=ghp_Zq8xK2vN7rT4mW9pL3sY6bH1cJ5dF0gA8eRt NPM_TOKEN=npm_Zq8xK2vN7rT4mW9pL3sY6bH1cJ5dF0gA8eRt') AS f JOIN secretscan.main.secret_detectors AS d USING (rule_id) ORDER BY d.provider"
+    success_criteria: "Two rows, AWS then GitHub; the npm token's rule is not in the registry so it contributes no provider."
+    ignore_column_names: true
+  - name: unlisted_rule_findings
+    reference_sql: "SELECT count(*) AS n FROM secretscan.main.secret_scan('GITLAB_TOKEN=glpat-Zq8xK2vN7rT4mW9pL3sY NPM_TOKEN=npm_Zq8xK2vN7rT4mW9pL3sY6bH1cJ5dF0gA8eRt api_key = \"f3a9c2e17b4d8a6e0c5f2b9d1e7a4c8b\"') AS f LEFT JOIN secretscan.main.secret_detectors AS d USING (rule_id) WHERE d.rule_id IS NULL"
+    success_criteria: "The answer is 1 — only the npm-access-token finding comes from a rule outside the registry (gitlab-pat and generic-api-key are listed)."
+    ignore_column_names: true

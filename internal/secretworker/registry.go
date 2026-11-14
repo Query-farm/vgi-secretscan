@@ -3,7 +3,6 @@
 package secretworker
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -46,7 +45,7 @@ var detectorRegistry = []detectorRule{
 	{"aws-access-token", "AWS", "Cloud Keys", 0, "AWS access key id (AKIA/ASIA...) — a structurally distinctive cloud credential."},
 	{"gcp-api-key", "GCP", "Cloud Keys", 0, "Google Cloud Platform API key."},
 	{"azure-ad-client-secret", "Azure", "Cloud Keys", 0, "Azure Active Directory client secret."},
-	{"private-key", "PEM", "Private Keys", 0, "PEM-encoded private key header (RSA/EC/OPENSSH/PGP)."},
+	{"private-key", "PEM", "Private Keys", 0, "PEM-encoded private key block (RSA/EC/OPENSSH/PGP): BEGIN header, key body, and END footer; a bare header alone does not match."},
 	{"github-pat", "GitHub", "VCS Tokens", 0, "GitHub personal access token (ghp_...)."},
 	{"github-fine-grained-pat", "GitHub", "VCS Tokens", 0, "GitHub fine-grained personal access token (github_pat_...)."},
 	{"gitlab-pat", "GitLab", "VCS Tokens", 0, "GitLab personal access token (glpat-...)."},
@@ -92,35 +91,6 @@ func registryViewDefinition() string {
 	}
 	b.WriteString(") AS t(rule_id, provider, category, confidence, description)")
 	return b.String()
-}
-
-// detectorExampleQueries serialises the view's object-level example queries as
-// the JSON array of {description, sql} objects vgi.example_queries requires
-// (VGI502/503). Every reference is fully catalog-qualified.
-func detectorExampleQueries() string {
-	type ex struct {
-		Description string `json:"description"`
-		SQL         string `json:"sql"`
-	}
-	out := []ex{
-		{
-			Description: "Browse every detector this worker recognises, highest-confidence first.",
-			SQL:         "SELECT rule_id, provider, category, confidence FROM secretscan.main.secret_detectors ORDER BY confidence DESC, rule_id;",
-		},
-		{
-			Description: "List only the high-confidence structural detectors (confidence >= 0.9).",
-			SQL:         "SELECT rule_id, provider FROM secretscan.main.secret_detectors WHERE confidence >= 0.9 ORDER BY rule_id;",
-		},
-		{
-			Description: "Count the recognised detectors grouped by the provider family they cover.",
-			SQL:         "SELECT category, count(*) AS detectors FROM secretscan.main.secret_detectors GROUP BY category ORDER BY detectors DESC, category;",
-		},
-	}
-	b, err := json.Marshal(out)
-	if err != nil {
-		panic(err)
-	}
-	return string(b)
 }
 
 // RegisterRegistry registers the browsable secret_detectors view on the worker.
@@ -172,7 +142,7 @@ func RegisterRegistry(w *vgi.Worker) {
 				"The registry is a curated, representative slice of the full 200+-rule default ruleset, " +
 				"not an exhaustive list. It is a static VALUES list, so it returns instantly with no network access. " +
 				"Pick a `rule_id` here, then scan text with `secret_contains` / `secret_scan` and join the findings back on `rule_id`.",
-			"vgi.example_queries": detectorExampleQueries(),
+			"vgi.example_queries": exampleQueriesJSON(detectorExamples),
 		},
 	})
 }

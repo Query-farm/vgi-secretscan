@@ -136,6 +136,19 @@ the host application, or filter first with `secret_contains` and scan the
 flagged rows. (This is the same shape as other VGI table functions such as
 `vgi-threatintel`'s `reputation()`.)
 
+Findings join back to the `secret_detectors` registry on `rule_id`, so one scan
+can be labelled by provider (rules outside the curated registry come back `NULL`):
+
+```sql
+SELECT f.rule_id, f.match_redacted, f.start_offset, d.provider, d.category
+FROM secretscan.main.secret_scan('AWS_ACCESS_KEY_ID=AKIAZ3MZ7EXAMPLE4Q2T SLACK_TOKEN=xoxb-1234567890-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx NPM_TOKEN=npm_Zq8xK2vN7rT4mW9pL3sY6bH1cJ5dF0gA8eRt') AS f
+LEFT JOIN secretscan.main.secret_detectors AS d USING (rule_id)
+ORDER BY f.start_offset;
+-- aws-access-token | AKIA********4Q2T |  18 | AWS   | Cloud Keys
+-- slack-bot-token  | xoxb********UvWx |  51 | Slack | Chat Tokens
+-- npm-access-token | npm_********8eRt | 116 | NULL  | NULL
+```
+
 ## Behavior & robustness
 
 - **Offline & deterministic.** No network call. Detection is deterministic for a

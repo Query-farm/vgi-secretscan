@@ -98,16 +98,10 @@ func (f *SecretContainsFunction) Metadata() vgi.FunctionMetadata {
 			"vgi.doc_llm":  "Return a `BOOLEAN` reporting whether a text or source-code value contains at least one detectable leaked secret (cloud keys, API tokens, private keys, JWTs, high-entropy strings) using the embedded gitleaks ruleset plus Shannon-entropy heuristics. It is the cheap predicate for WHERE-clause filtering; pass the same text to secret_scan to enumerate the individual findings. Detection is offline (no network), never verifies whether the secret is live, and returns `NULL` for a `NULL` input.",
 			"vgi.doc_md":   "Return `TRUE` when `text` holds at least one detectable leaked secret (gitleaks ruleset + entropy), else `FALSE` (`NULL` for `NULL` input). The cheap predicate for filtering; use `secret_scan` for the findings. Offline, no verification.",
 			"vgi.keywords": `["secret","leaked secret","credential","contains secret","secret detection","gitleaks","api key","token","private key","jwt","entropy","predicate","boolean","filter"]`,
-			// VGI515: described example carrier. The SQL is byte-identical to the
-			// native Examples below so the loader dedupes them into one described
-			// example (the native duckdb_functions().examples carrier drops the
-			// per-example description).
-			"vgi.example_queries": `[` +
-				`{"description":"Check whether a single string holds any detectable secret (returns TRUE here for the AWS-style key).",` +
-				`"sql":"SELECT secretscan.main.secret_contains('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') AS leaked;"},` +
-				`{"description":"Check a benign string with no secret (returns FALSE).",` +
-				`"sql":"SELECT secretscan.main.secret_contains('just a harmless note, nothing to see here') AS leaked;"}` +
-				`]`,
+			// VGI515: described example carrier, rendered from the same slice as
+			// the native Examples below so the SQL is byte-identical and the loader
+			// dedupes them into one described example (examples.go).
+			"vgi.example_queries": exampleQueriesJSON(secretContainsExamples),
 			// VGI509: guaranteed-runnable, verified examples (with expected_result)
 			// so agents have a self-contained example to learn from and re-run.
 			"vgi.executable_examples": `[` +
@@ -119,16 +113,7 @@ func (f *SecretContainsFunction) Metadata() vgi.FunctionMetadata {
 				`"expected_result":[{"leaked":false}]}` +
 				`]`,
 		},
-		Examples: []vgi.CatalogExample{
-			{
-				SQL:         "SELECT secretscan.main.secret_contains('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') AS leaked;",
-				Description: "Check whether a single string holds any detectable secret (returns TRUE here for the AWS-style key).",
-			},
-			{
-				SQL:         "SELECT secretscan.main.secret_contains('just a harmless note, nothing to see here') AS leaked;",
-				Description: "Check a benign string with no secret (returns FALSE).",
-			},
-		},
+		Examples: secretContainsExamples,
 	}
 }
 
@@ -216,25 +201,14 @@ func (f *SecretScanFunction) Metadata() vgi.FunctionMetadata {
 				`{"name":"entropy","type":"DOUBLE","description":"Shannon entropy of the detected secret (the gitleaks value, or a computed fallback when the matched rule has no entropy threshold); typically ranges from about 2.5 to 6.0 bits."},` +
 				`{"name":"confidence","type":"DOUBLE","description":"Heuristic confidence score in [0,1]: structurally distinctive rules (AWS/GCP/GitHub/private-key/JWT) score high (0.95); other named rules 0.85; generic/entropy rules 0.30–0.75 scaled by entropy."}` +
 				`]`,
-			// VGI515: described example carrier. SQL byte-identical to the native
-			// Examples below so the loader dedupes them into one described example.
-			"vgi.example_queries": `[` +
-				`{"description":"List each secret found in a string, with its rule, redacted match, and confidence.",` +
-				`"sql":"SELECT rule_id, match_redacted, confidence FROM secretscan.main.secret_scan('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T');"},` +
-				`{"description":"List only the high-confidence findings (confidence >= 0.9) in a string, with each finding's byte offset.",` +
-				`"sql":"SELECT rule_id, start_offset FROM secretscan.main.secret_scan('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') WHERE confidence >= 0.9;"}` +
-				`]`,
+			// VGI515: described example carrier, rendered from the same slice as
+			// the native Examples below (examples.go); includes the composed
+			// scan x registry and scan x secret_contains examples.
+			"vgi.example_queries": exampleQueriesJSON(secretScanExamples),
+			// VGI509: the offline, deterministic composed redaction check.
+			"vgi.executable_examples": secretScanExecutableExamples(),
 		},
-		Examples: []vgi.CatalogExample{
-			{
-				SQL:         "SELECT rule_id, match_redacted, confidence FROM secretscan.main.secret_scan('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T');",
-				Description: "List each secret found in a string, with its rule, redacted match, and confidence.",
-			},
-			{
-				SQL:         "SELECT rule_id, start_offset FROM secretscan.main.secret_scan('aws_secret = AKIAZ3MZ7EXAMPLE4Q2T') WHERE confidence >= 0.9;",
-				Description: "List only the high-confidence findings (confidence >= 0.9) in a string, with each finding's byte offset.",
-			},
-		},
+		Examples: secretScanExamples,
 	}
 }
 
@@ -312,6 +286,14 @@ const (
 	sampleAWSText   = "deploy AKIAZ3MZ7EXAMPLE4Q2T now"
 	sampleSlackText = "token xoxb-1234567890-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx"
 	sampleCleanText = "the quick brown fox jumps over the lazy dog"
+	// Composed-task fixtures (secret_scan joined to secret_detectors). Each
+	// holds one npm token, a real gitleaks rule the curated registry omits.
+	sampleCIText = "ci.yml: AWS_KEY=AKIAZ3MZ7EXAMPLE4Q2T " +
+		"GH_TOKEN=ghp_Zq8xK2vN7rT4mW9pL3sY6bH1cJ5dF0gA8eRt " +
+		"NPM_TOKEN=npm_Zq8xK2vN7rT4mW9pL3sY6bH1cJ5dF0gA8eRt"
+	sampleMixedText = "GITLAB_TOKEN=glpat-Zq8xK2vN7rT4mW9pL3sY " +
+		"NPM_TOKEN=npm_Zq8xK2vN7rT4mW9pL3sY6bH1cJ5dF0gA8eRt " +
+		`api_key = "f3a9c2e17b4d8a6e0c5f2b9d1e7a4c8b"`
 )
 
 // AgentTestTasks is the VGI152/VGI920 analyst-task suite (catalog tag
@@ -369,6 +351,20 @@ func buildAgentTestTasks() string {
 			Name: "high_confidence_detectors_present",
 			Prompt: "Does the scanner's detector registry include any high-confidence (>= 0.9) " +
 				"detector for AWS? Answer with a single boolean.",
+		},
+		{
+			Name: "providers_of_findings",
+			Prompt: "Scan the following text for leaked secrets and use the scanner's detector " +
+				"registry to name the provider behind each finding. Return a single VARCHAR " +
+				"column named provider with one row per distinct provider, sorted " +
+				"alphabetically; leave out findings whose rule the registry does not list. " +
+				"Text: " + sampleCIText,
+		},
+		{
+			Name: "unlisted_rule_findings",
+			Prompt: "Scan the following text for leaked secrets. How many of the findings come " +
+				"from detector rules that are NOT listed in the scanner's detector registry? " +
+				"Answer with a single integer. Text: " + sampleMixedText,
 		},
 	}
 	b, err := json.Marshal(tasks)
