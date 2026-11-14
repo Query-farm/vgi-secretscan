@@ -227,3 +227,7 @@ Written by [Query.Farm](https://query.farm).
 
 Copyright 2026 Query Farm LLC - https://query.farm
 
+
+## Notebooks
+
+[Executed SQL review-queue walkthrough](notebooks/README.md): preserve redacted findings, NULL inputs and registry gaps while exploring confidence thresholds on non-live fixtures.
