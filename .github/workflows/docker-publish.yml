@@ -89,9 +89,9 @@ jobs:
         echo "::endgroup::"
 
         echo "::group::stdio entrypoint smoke (one file, cold container per ATTACH)"
-        TRANSPORT=subprocess \
+        TRANSPORT=stdio \
           TEST_PATTERN="test/sql/secretscan.test" \
-          VGI_SECRETSCAN_WORKER="docker run -i --rm $CITEST_IMAGE stdio" \
+          WORKER="docker run -i --rm $CITEST_IMAGE stdio" \
           ci/run-integration.sh
         echo "::endgroup::"
 
@@ -99,5 +99,5 @@ jobs:
         CID=$(docker run -d -p 18000:8000 "$CITEST_IMAGE")
         trap 'docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
         for _ in $(seq 1 30); do curl -fsS -o /dev/null http://localhost:18000/health && break; sleep 1; done
-        TRANSPORT=http VGI_SECRETSCAN_WORKER="http://localhost:18000" ci/run-integration.sh
+        TRANSPORT=http WORKER="http://localhost:18000" ci/run-integration.sh
         echo "::endgroup::"

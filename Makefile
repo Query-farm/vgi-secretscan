@@ -13,38 +13,47 @@
 #   make fmt         gofmt -w
 #   make vet         go vet
 #   make lint        golangci-lint (if installed) else vet
+#   make check       lint + test (what CI runs)
 #   make clean       Remove built binaries
 #
-# test-sql needs haybarn-unittest on PATH:
-#   uv tool install --prerelease allow 'haybarn-unittest>=2.0.0rc11,<2.1'
-#   export PATH="$$HOME/.local/bin:$$PATH"
+# test-sql installs the pinned haybarn-unittest SQL runner into .tools (needs
+# uv) and runs test/sql over every transport via ci/run-integration.sh:
+#   make test-sql                    stdio, launch and http
+#   make test-sql TRANSPORTS=launch  one transport
 
 WORKER_BIN := vgi-secretscan-worker
 WORKER_CMD := ./cmd/vgi-secretscan-worker
 
-TEST_DIR     := .
-TEST_PATTERN := test/sql/*
-
 # Absolute path to the built worker (the VGI extension launches it via LOCATION).
 WORKER_PATH := $(CURDIR)/$(WORKER_BIN)
 
-.PHONY: build test test-unit test-sql fmt vet lint clean
+# The SQL test runner, pinned like the vgi-starter's (make tools).
+HAYBARN_VERSION  ?= 2.0.0rc11
+TOOLS            := $(CURDIR)/.tools
+HAYBARN_UNITTEST := $(TOOLS)/bin/haybarn-unittest
+TRANSPORTS       ?= stdio launch http
+
+.PHONY: build test test-unit test-sql tools check fmt vet lint clean
 
 build:
 	go build -o $(WORKER_BIN) $(WORKER_CMD)
 
 test: test-unit test-sql
 
+check: lint test
+
 test-unit:
 	go test ./...
 
-# Secret detection is pure/offline — no mock server is needed. Build the worker,
-# point the SQL suite at it via VGI_SECRETSCAN_WORKER (the ATTACH LOCATION),
-# then run the haybarn suite.
-test-sql: build
-	@set -e; \
-	VGI_SECRETSCAN_WORKER="$(WORKER_PATH)" \
-		haybarn-unittest --keep-home --test-dir "$(TEST_DIR)" "$(TEST_PATTERN)"
+tools: ## Install the pinned SQL test runner into .tools
+	@test -x $(HAYBARN_UNITTEST) || { uv venv -q --allow-existing $(TOOLS) && uv pip install -q -p $(TOOLS) haybarn-unittest==$(HAYBARN_VERSION); }
+
+# SQL tests through DuckDB over each transport in TRANSPORTS (stdio, launch,
+# http); ci/run-integration.sh starts the HTTP worker.
+test-sql: build tools
+	@set -e; for t in $(TRANSPORTS); do \
+		WORKER=$(WORKER_PATH) HAYBARN_UNITTEST=$(HAYBARN_UNITTEST) TRANSPORT=$$t ci/run-integration.sh; \
+	done
 
 fmt:
 	gofmt -w .

@@ -1,235 +1,183 @@
 #!/usr/bin/env bash
 # Copyright 2026 Query Farm LLC - https://query.farm
 #
-# Run this repo's sqllogictest suite (test/sql/*.test) against the
-# vgi-secretscan VGI worker, using a prebuilt standalone `haybarn-unittest` and
-# the signed community `vgi` extension — no C++ build from source. See
-# ci/README.md.
+# Run test/sql/*.test through DuckDB (the haybarn-unittest sqllogictest runner)
+# against this worker, over one transport. Adapted from the vgi-starter
+# (go) ci/run-integration.sh.
 #
-# Secret detection is pure/offline (the gitleaks ruleset is embedded in the
-# worker binary), so there is NO mock server — but the SAME suite still runs over
-# whichever transport the TRANSPORT env var selects, by changing what
-# `VGI_SECRETSCAN_WORKER` resolves to (the vgi extension picks the transport from
-# the ATTACH LOCATION string):
-#
-#   subprocess (default)  VGI_SECRETSCAN_WORKER = the stdio worker binary
-#                         -> extension spawns it over stdin/stdout.
-#   http                  start `<worker> --http` (prints "PORT:<n>"), parse the
-#                         port, VGI_SECRETSCAN_WORKER = http://127.0.0.1:<port>.
-#                         (The extension POSTs each RPC method at <LOCATION>/<method>,
-#                         e.g. /catalog_attach; the SDK mounts them at the root.)
-#   unix                  start `<worker> --unix /tmp/secretscan.sock` (prints
-#                         "UNIX:<path>"), VGI_SECRETSCAN_WORKER = unix:///tmp/secretscan.sock.
-#
-# Any out-of-band worker process is trap-killed on exit.
+#   WORKER=/abs/path/to/worker-executable TRANSPORT=stdio ci/run-integration.sh
 #
 # Required environment:
-#   HAYBARN_UNITTEST       path to the haybarn-unittest binary
-#   VGI_SECRETSCAN_WORKER  for TRANSPORT=subprocess: the worker LOCATION the
-#                          .test files ATTACH (the built Go worker binary,
-#                          spawned over stdio). For http/unix this is OVERRIDDEN
-#                          by this script, but the binary it points at is reused
-#                          to launch the out-of-band server, so it must still be
-#                          the worker path.
+#   WORKER            absolute path to an executable that serves the worker:
+#                     no arguments = stdio; `--http` = HTTP on an ephemeral
+#                     loopback port, printing `PORT:<n>` on stdout once listening.
+#                     For TRANSPORT=stdio it may be any LOCATION command (the
+#                     Docker image_test passes `docker run -i --rm IMG stdio`);
+#                     for TRANSPORT=http an http(s):// URL uses that already
+#                     running worker instead of starting one.
 # Optional:
-#   TRANSPORT              subprocess (default) | http | unix
-#   STAGE                  scratch dir for the preprocessed test tree (default: mktemp)
-#   TEST_PATTERN           runner glob/path under the staged tree to execute
-#                          (default: test/sql/*). All files are always staged;
-#                          this only narrows what RUNS — e.g. a single-file smoke
-#                          through the stdio Docker image.
+#   TRANSPORT         stdio | launch | http                        (default: stdio)
+#   HAYBARN_UNITTEST  path to haybarn-unittest   (default: the one on PATH)
+#   MIN_EXECUTED      fail if fewer test cases ran (default: 1)
+#   EXPECTED_SKIP_REASONS  newline-separated skip reasons that are allowed,
+#                     e.g. "require-env STARTER_LIVE". Any other skip fails.
+#   TEST_PATTERN      which staged files to run (default: test/sql/*)
+#   SKIP_MOCK=1       don't start the repo's mock backend (Docker image_test)
+#   WARMUP_TIMEOUT    seconds allowed for the extension install (default: 300)
+#   KEEP_STAGE=1      keep the staged test tree for debugging
 #
-# For TRANSPORT=http, if VGI_SECRETSCAN_WORKER is ALREADY an http(s):// URL (e.g.
-# a pre-launched container in the docker image_test), it is used as-is and NO
-# out-of-band worker is spawned. Detection is offline, so there is no mock
-# backend to gate — a SKIP_MOCK knob is intentionally not needed here.
+# Transports:
+#   stdio   DuckDB spawns the worker and talks over stdin/stdout (the default).
+#   launch  DuckDB starts the worker once on an AF_UNIX socket and pools
+#           connections (`LOCATION 'launch:/path'`); best for slow-starting
+#           runtimes such as the JVM.
+#   http    the worker runs as an HTTP server (`--http`), as in Docker deploys.
+#
+# Why the extra checks: the sqllogictest runner turns some errors into silent
+# SKIPs (anything mentioning "HTTP" without --test-config) and exits 0 when no
+# test matched. Both would make a broken lane look green, so this script passes
+# a config that disables error-skipping and fails on any unexpected skip.
 set -euo pipefail
 
-: "${HAYBARN_UNITTEST:?path to the haybarn-unittest binary}"
-: "${VGI_SECRETSCAN_WORKER:?worker LOCATION (the built Go worker binary)}"
-
-TRANSPORT="${TRANSPORT:-subprocess}"
-case "$TRANSPORT" in
-  subprocess|http|unix) ;;
-  *) echo "ERROR: unknown TRANSPORT='$TRANSPORT' (expected subprocess|http|unix)" >&2; exit 2 ;;
-esac
+: "${WORKER:?absolute path to the worker executable}"
+TRANSPORT="${TRANSPORT:-stdio}"
+HAYBARN_UNITTEST="${HAYBARN_UNITTEST:-$(command -v haybarn-unittest || true)}"
+MIN_EXECUTED="${MIN_EXECUTED:-1}"
+TEST_PATTERN="${TEST_PATTERN:-test/sql/*}"
+SKIP_MOCK="${SKIP_MOCK:-}"
+[ -n "$HAYBARN_UNITTEST" ] || { echo "::error::haybarn-unittest not found (make tools)"; exit 1; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
-STAGE="${STAGE:-$(mktemp -d)}"
-
-# The worker binary the subprocess transport ATTACHes to is also the binary we
-# launch out-of-band for http/unix. Capture it before we possibly overwrite
-# VGI_SECRETSCAN_WORKER with a URL.
-WORKER_BIN="$VGI_SECRETSCAN_WORKER"
-
-# Collected PIDs and paths to clean up on exit (optional out-of-band worker).
+STAGE="$(mktemp -d)"
+PIDS=()
 WORKER_PID=""
-UNIX_SOCK=""
 cleanup() {
-  # Preserve the script's exit status: this runs on EXIT, so its own last
-  # command must not clobber the real exit code (a bare `[ -n "$x" ]` that is
-  # false returns 1 and would turn a green run red).
-  local rc=$?
-  if [ -n "$WORKER_PID" ]; then kill "$WORKER_PID" 2>/dev/null || true; wait "$WORKER_PID" 2>/dev/null || true; fi
-  if [ -n "$UNIX_SOCK" ]; then rm -f "$UNIX_SOCK"; fi
-  return "$rc"
+  for p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$p" 2>/dev/null || true; done
+  [ "${KEEP_STAGE:-0}" = "1" ] && echo "stage kept at $STAGE" || rm -rf "$STAGE"
 }
 trap cleanup EXIT
 
-# --- Per-transport: resolve VGI_SECRETSCAN_WORKER (the ATTACH LOCATION) ------
-# subprocess keeps the binary path (extension spawns stdio). http/unix start the
-# worker out-of-band and hand the extension a URL.
+# start_server <log> <cmd...> — run a server that prints PORT:<n>; sets PORT.
+PORT=""
+start_server() {
+  local log="$1"; shift
+  # Create the log before backgrounding: the child opens its redirect only
+  # once it is scheduled, and the poll below would otherwise read a missing
+  # file, which under set -e -o pipefail kills the whole run.
+  : > "$log"
+  "$@" >"$log" 2>&1 &
+  local pid=$!
+  PIDS+=("$pid")
+  LAST_PID="$pid"
+  for _ in $(seq 1 120); do
+    kill -0 "$pid" 2>/dev/null || { echo "::error::'$*' exited early:"; cat "$log"; return 1; }
+    PORT="$(sed -n 's/^PORT:\([0-9][0-9]*\).*/\1/p' "$log" | head -1)"
+    [ -n "$PORT" ] && return 0
+    sleep 0.5
+  done
+  echo "::error::'$*' never printed PORT:<n>"; cat "$log"; return 1
+}
+
+
+HTTP=0
 case "$TRANSPORT" in
-  subprocess)
-    echo "Transport: subprocess/stdio — VGI_SECRETSCAN_WORKER=$VGI_SECRETSCAN_WORKER"
-    ;;
-
+  stdio)  export VGI_SECRETSCAN_WORKER="$WORKER" ;;
+  launch) export VGI_SECRETSCAN_WORKER="launch:$WORKER" ;;
   http)
-    # Honor a pre-launched HTTP worker (e.g. a running container in the docker
-    # image_test): if VGI_SECRETSCAN_WORKER already points at an http(s) URL, use
-    # it as-is and skip spawning a local binary. The awk httpfs injection below
-    # still runs because TRANSPORT=http.
-    if [[ "$VGI_SECRETSCAN_WORKER" =~ ^https?:// ]]; then
-      echo "Using pre-launched HTTP worker at $VGI_SECRETSCAN_WORKER"
-    else
-      # Start the worker in --http mode; it prints "PORT:<n>" once listening.
-      WORKER_PORT_FILE="$(mktemp)"
-      echo "Transport: http — starting '$WORKER_BIN --http' ..."
-      "$WORKER_BIN" --http >"$WORKER_PORT_FILE" 2>/dev/null &
-      WORKER_PID=$!
-      WPORT=""
-      for _ in $(seq 1 50); do
-        WPORT="$(sed -n 's/^PORT:\([0-9][0-9]*\)$/\1/p' "$WORKER_PORT_FILE" 2>/dev/null | head -1)"
-        [ -n "$WPORT" ] && break
-        # Bail early if the worker died.
-        kill -0 "$WORKER_PID" 2>/dev/null || { echo "ERROR: http worker exited before reporting a port" >&2; cat "$WORKER_PORT_FILE" >&2 || true; exit 1; }
-        sleep 0.2
-      done
-      rm -f "$WORKER_PORT_FILE"
-      if [ -z "$WPORT" ]; then
-        echo "ERROR: http worker did not report a port" >&2
-        exit 1
-      fi
-      # The extension treats the LOCATION as a base and POSTs each RPC method at
-      # <LOCATION>/<method> (e.g. /catalog_attach). The SDK mounts those methods
-      # at the server root (empty prefix), so the LOCATION must be the bare
-      # scheme://host:port with NO path. Appending /vgi would make every method
-      # 404 — which the runner silently skips as an error "matching 'HTTP'".
-      export VGI_SECRETSCAN_WORKER="http://127.0.0.1:$WPORT"
-      echo "HTTP worker listening on $VGI_SECRETSCAN_WORKER (pid $WORKER_PID)"
-    fi
+    HTTP=1
+    case "$WORKER" in
+      http://*|https://*) export VGI_SECRETSCAN_WORKER="$WORKER" ;;   # an already-running worker
+      *)
+        start_server "$STAGE/worker.log" "$WORKER" --http
+        WORKER_PID="$LAST_PID"
+        export VGI_SECRETSCAN_WORKER="http://127.0.0.1:$PORT"
+        ;;
+    esac
     ;;
-
-  unix)
-    # Start the worker on an AF_UNIX socket; it prints "UNIX:<path>" once
-    # listening. idleTimeout is disabled (we own the process lifecycle).
-    UNIX_SOCK="${TMPDIR:-/tmp}/secretscan.$$.sock"
-    rm -f "$UNIX_SOCK"
-    WORKER_OUT_FILE="$(mktemp)"
-    echo "Transport: unix — starting '$WORKER_BIN --unix $UNIX_SOCK' ..."
-    "$WORKER_BIN" --unix "$UNIX_SOCK" >"$WORKER_OUT_FILE" 2>/dev/null &
-    WORKER_PID=$!
-    READY=""
-    for _ in $(seq 1 50); do
-      if grep -q '^UNIX:' "$WORKER_OUT_FILE" 2>/dev/null && [ -S "$UNIX_SOCK" ]; then
-        READY=1; break
-      fi
-      kill -0 "$WORKER_PID" 2>/dev/null || { echo "ERROR: unix worker exited before the socket was ready" >&2; cat "$WORKER_OUT_FILE" >&2 || true; exit 1; }
-      sleep 0.2
-    done
-    rm -f "$WORKER_OUT_FILE"
-    if [ -z "$READY" ]; then
-      echo "ERROR: unix worker did not report a ready socket at $UNIX_SOCK" >&2
-      exit 1
-    fi
-    export VGI_SECRETSCAN_WORKER="unix://$UNIX_SOCK"
-    echo "Unix worker listening on $VGI_SECRETSCAN_WORKER (pid $WORKER_PID)"
-    ;;
+  *) echo "::error::unknown TRANSPORT=$TRANSPORT (expected stdio|launch|http)"; exit 1 ;;
 esac
 
-# --- Stage the preprocessed tests -------------------------------------------
-# The FULL suite runs over every transport, including http. secret_scan works
-# over the stateless HTTP transport because its state carries an explicit
-# gob-encodable cursor (Rows + Offset) that the framework snapshots into the
-# continuation token each tick — see the "WHY AN EXPLICIT CURSOR" comment in
-# internal/secretworker/functions.go. No tests are gated.
-echo "Staging preprocessed tests into $STAGE ..."
+# Stage the tests, rewriting `require vgi` into a LOAD of the signed extension
+# (the standalone runner links no extensions; most of these files already say
+# `LOAD vgi;`), `require <core ext>` into INSTALL + LOAD, and loading httpfs
+# after vgi for the HTTP transport.
 mkdir -p "$STAGE/test/sql"
 for f in "$REPO"/test/sql/*.test; do
-  awk -f "$HERE/preprocess-require.awk" "$f" > "$STAGE/test/sql/$(basename "$f")"
+  awk -v http="$HTTP" '
+    /^require[ \t]+vgi[ \t]*$/ || /^LOAD[ \t]+vgi;[ \t]*$/ {
+      if ($1 == "require") { print "statement ok"; print "LOAD vgi;" } else print
+      if (http == 1) { print ""; print "statement ok"; print "LOAD httpfs;" }
+      next
+    }
+    /^require[ \t]+(httpfs|json|parquet|spatial)[ \t]*$/ {
+      print "statement ok"; print "INSTALL " $2 " FROM core;"; print ""
+      print "statement ok"; print "LOAD " $2 ";"; next
+    }
+    { print }' "$f" > "$STAGE/test/sql/$(basename "$f")"
 done
 
-# The HTTP transport needs DuckDB's HTTP client, which the vgi extension drives
-# through DuckDB's HTTPUtil — that is only registered when the `httpfs`
-# extension is loaded. The .test files only `LOAD vgi`, so over HTTP the
-# worker-RPC POSTs fail with an "HTTP"-flavoured error (which the runner then
-# silently skips). Inject an explicit signed `INSTALL httpfs FROM core; LOAD
-# httpfs;` after each `LOAD vgi;` in the staged tests for the http transport
-# only (subprocess/unix do not use the HTTP client, so they need nothing extra).
-if [ "$TRANSPORT" = "http" ]; then
-  echo "Transport http: injecting 'LOAD httpfs' (required for the worker HTTP RPC) ..."
-  for f in "$STAGE"/test/sql/*.test; do
-    awk '
-      { print }
-      /^LOAD[ \t]+vgi;[ \t]*$/ {
-        print "";
-        print "statement ok";
-        print "INSTALL httpfs FROM core;";
-        print "";
-        print "statement ok";
-        print "LOAD httpfs;";
-      }
-    ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-  done
-fi
-
-cd "$STAGE"
-
-# Warm the extension cache once: vgi from the signed community channel. A miss
-# here is only a warning — the per-test LOAD vgi; (the .test files load it
-# explicitly) is what actually gates each file, and it needs vgi already
-# INSTALLed into the runner's extension dir.
-echo "Warming the extension cache (vgi from community) ..."
-mkdir -p "$STAGE/test"
+# Install the extensions once, refreshing any stale cached copy of vgi.
 cat > "$STAGE/test/_warm.test" <<'EOF'
-# name: test/_warm.test
-# group: [warm]
 statement ok
-INSTALL vgi FROM community;
+FORCE INSTALL vgi FROM community;
+
+statement ok
+INSTALL httpfs FROM core;
+
+statement ok
+INSTALL json FROM core;
+
+statement ok
+INSTALL parquet FROM core;
 EOF
-"$HAYBARN_UNITTEST" --keep-home "test/_warm.test" >/dev/null 2>&1 || echo "::warning::extension warm step did not fully succeed"
+# Bounded: a stalled extension download would otherwise hang the lane until the
+# job timeout. WARMUP_TIMEOUT is in seconds.
+"$HAYBARN_UNITTEST" --keep-home --test-dir "$STAGE" "test/_warm.test" >/dev/null 2>&1 &
+warm_pid=$!
+warm_deadline=$((SECONDS + ${WARMUP_TIMEOUT:-300}))
+while kill -0 "$warm_pid" 2>/dev/null && [ "$SECONDS" -lt "$warm_deadline" ]; do sleep 1; done
+if kill -0 "$warm_pid" 2>/dev/null; then
+  kill "$warm_pid" 2>/dev/null || true
+  wait "$warm_pid" 2>/dev/null || true
+  echo "::warning::extension warm-up timed out after ${WARMUP_TIMEOUT:-300}s (stalled download?)"
+elif ! wait "$warm_pid"; then
+  echo "::warning::extension warm-up did not fully succeed"
+fi
 rm -f "$STAGE/test/_warm.test"
 
-# Run the whole suite in one invocation, capturing the runner's native
-# sqllogictest report so we can both stream it AND guard against a silent skip.
-#
-# IMPORTANT: the DuckDB/Haybarn sqllogictest runner SKIPS (not fails, exit 0) a
-# test whose error message matches a built-in network-error allowlist that
-# includes the substring "HTTP". So a broken HTTP transport would otherwise show
-# "All tests were skipped" and the job would go GREEN having run nothing — a
-# fake pass. We detect that and fail explicitly. A real run prints
-# "All tests passed (N assertions ...)".
-TEST_PATTERN="${TEST_PATTERN:-test/sql/*}"
-echo "Running suite (transport: $TRANSPORT, worker: $VGI_SECRETSCAN_WORKER, pattern: $TEST_PATTERN) ..."
-RUN_LOG="$STAGE/run.log"
-set +e
-"$HAYBARN_UNITTEST" --keep-home "$TEST_PATTERN" 2>&1 | tee "$RUN_LOG"
-RUN_RC="${PIPESTATUS[0]}"
-set -e
+cat > "$STAGE/no_error_skip.json" <<'EOF'
+{"skip_error_messages": ["__vgi_starter_never_matches__"]}
+EOF
 
-if [ "$RUN_RC" -ne 0 ]; then
-  echo "ERROR: suite failed (transport: $TRANSPORT, rc=$RUN_RC)" >&2
-  exit "$RUN_RC"
-fi
+echo "Running $TEST_PATTERN over $TRANSPORT (worker: $VGI_SECRETSCAN_WORKER)"
+LOG="$STAGE/unittest.log"
+rc=0
+( cd "$STAGE" && "$HAYBARN_UNITTEST" --keep-home --test-dir "$STAGE" \
+    --test-config "$STAGE/no_error_skip.json" "$TEST_PATTERN" ) 2>&1 | tee "$LOG" && rc=0 || rc="${PIPESTATUS[0]}"
 
-# Guard against the silent-skip fake-pass (see comment above). If every test was
-# skipped — and none ran — treat it as a failure for this transport, surfacing
-# the skip reason the runner reported.
-if grep -q 'All tests were skipped' "$RUN_LOG"; then
-  echo "ERROR: every test was SKIPPED on transport '$TRANSPORT' (the runner's" >&2
-  echo "       built-in network-error skip swallowed the real error). This is" >&2
-  echo "       NOT a pass. Skip reason reported by the runner:" >&2
-  grep -A3 'Skipped tests for the following reasons' "$RUN_LOG" >&2 || true
-  exit 1
+if grep -q 'No test cases matched\|No tests ran' "$LOG"; then
+  echo "::error::no test cases matched; the staging is wrong"; exit 1
 fi
+total="$(sed -n 's/^\[[0-9]*\/\([0-9]*\)\].*/\1/p' "$LOG" | tail -1)"
+total="${total:-0}"
+skips="$(awk '/^Skipped tests for the following reasons:/{b=1;next} b&&/^[[:space:]]*$/{b=0} b&&match($0,/: [0-9]+[[:space:]]*$/){print substr($0,1,RSTART-1) "\t" substr($0,RSTART+2)+0}' "$LOG")"
+skipped=0
+while IFS=$'\t' read -r reason n; do
+  [ -n "$reason" ] || continue
+  skipped=$((skipped + n))
+  if ! printf '%s\n' "${EXPECTED_SKIP_REASONS:-}" | grep -qxF "$reason"; then
+    echo "::error::unexpected skip: '$reason'. A test file silently stopped running;" \
+         "fix the gate or add it to EXPECTED_SKIP_REASONS."
+    rc=1
+  fi
+done <<< "$skips"
+executed=$((total - skipped))
+echo "executed $executed of $total test files over $TRANSPORT ($skipped skipped)"
+if [ "$executed" -lt "$MIN_EXECUTED" ]; then
+  echo "::error::only $executed test files ran (MIN_EXECUTED=$MIN_EXECUTED)"; rc=1
+fi
+if [ -n "$WORKER_PID" ] && ! kill -0 "$WORKER_PID" 2>/dev/null; then
+  echo "::error::the HTTP worker died during the run:"; cat "$STAGE/worker.log"; rc=1
+fi
+exit "$rc"
