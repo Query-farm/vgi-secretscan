@@ -28,7 +28,7 @@ WORKER_CMD := ./cmd/vgi-secretscan-worker
 WORKER_PATH := $(CURDIR)/$(WORKER_BIN)
 
 # The SQL test runner, pinned like the vgi-starter's (make tools).
-HAYBARN_VERSION  ?= 2.0.0rc11
+HAYBARN_VERSION  ?= 2.0.1rc3
 TOOLS            := $(CURDIR)/.tools
 HAYBARN_UNITTEST := $(TOOLS)/bin/haybarn-unittest
 TRANSPORTS       ?= stdio launch http
